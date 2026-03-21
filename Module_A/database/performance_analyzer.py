@@ -78,6 +78,55 @@ class PerformanceAnalyzer:
             db.insert(key, value)
         return db
 
+    def generate_search_keys(self, existing_keys, query_count=None):
+        """
+        Generate a randomized search workload independent from insertion order.
+
+        The workload contains a mix of present and absent keys.
+        """
+        if not existing_keys:
+            return []
+
+        if query_count is None:
+            query_count = max(100, len(existing_keys))
+
+        existing_keys = list(existing_keys)
+        existing_set = set(existing_keys)
+
+        hit_count = min(len(existing_keys), query_count // 2)
+        miss_count = max(0, query_count - hit_count)
+
+        hits = self._random.sample(existing_keys, hit_count) if hit_count else []
+
+        upper_bound = max(existing_keys) + len(existing_keys) * 10 + 1
+        misses = []
+        while len(misses) < miss_count:
+            candidate = self._random.randrange(upper_bound)
+            if candidate not in existing_set:
+                misses.append(candidate)
+
+        queries = hits + misses
+        self._random.shuffle(queries)
+        return queries
+
+    def generate_range_queries(self, existing_keys, query_count=100):
+        """Generate randomized [left, right] range query bounds."""
+        if not existing_keys:
+            return []
+
+        sorted_keys = sorted(existing_keys)
+        if len(sorted_keys) == 1:
+            key = sorted_keys[0]
+            return [(key, key)] * query_count
+
+        queries = []
+        for _ in range(query_count):
+            left, right = self._random.sample(sorted_keys, 2)
+            if left > right:
+                left, right = right, left
+            queries.append((left, right))
+        return queries
+
     def measure_time_complexity(self, sizes, repeat=5):
         """
         Measure median runtime (seconds) for insert/search/range/delete.
@@ -88,13 +137,9 @@ class PerformanceAnalyzer:
 
         for size in sizes:
             keys, records = self.generate_dataset(size)
-            search_key = keys[size // 2] if keys else None
-            sorted_keys = sorted(keys)
-            if sorted_keys:
-                left = sorted_keys[size // 4]
-                right = sorted_keys[(3 * size) // 4]
-            else:
-                left, right = 0, 0
+            search_keys = self.generate_search_keys(keys)
+            range_queries = self.generate_range_queries(keys)
+            delete_keys = self._random.sample(keys, len(keys)) if keys else []
 
             insert_records = records
 
@@ -111,11 +156,11 @@ class PerformanceAnalyzer:
             brute_for_search = self._build_bruteforce(records)
 
             bpt_search = self._measure_time(
-                lambda: bpt_for_search.search(search_key),
+                lambda: self._time_searches(bpt_for_search, search_keys),
                 repeat=repeat,
             )
             brute_search = self._measure_time(
-                lambda: brute_for_search.search(search_key),
+                lambda: self._time_searches(brute_for_search, search_keys),
                 repeat=repeat,
             )
 
@@ -123,20 +168,20 @@ class PerformanceAnalyzer:
             brute_for_range = self._build_bruteforce(records)
 
             bpt_range = self._measure_time(
-                lambda: bpt_for_range.range_query(left, right),
+                lambda: self._time_range_queries(bpt_for_range, range_queries),
                 repeat=repeat,
             )
             brute_range = self._measure_time(
-                lambda: brute_for_range.range_query(left, right),
+                lambda: self._time_range_queries(brute_for_range, range_queries),
                 repeat=repeat,
             )
 
             bpt_delete = self._measure_time(
-                lambda: self._time_delete(self._build_bplustree(records), keys),
+                lambda: self._time_delete(self._build_bplustree(records), delete_keys),
                 repeat=repeat,
             )
             brute_delete = self._measure_time(
-                lambda: self._time_delete(self._build_bruteforce(records), keys),
+                lambda: self._time_delete(self._build_bruteforce(records), delete_keys),
                 repeat=repeat,
             )
 
@@ -211,6 +256,14 @@ class PerformanceAnalyzer:
     def _time_delete(self, structure, keys):
         for key in keys:
             structure.delete(key)
+
+    def _time_searches(self, structure, keys):
+        for key in keys:
+            structure.search(key)
+
+    def _time_range_queries(self, structure, bounds):
+        for left, right in bounds:
+            structure.range_query(left, right)
 
     def conduct_performance_testing(self, sizes=None, repeat=5):
         """

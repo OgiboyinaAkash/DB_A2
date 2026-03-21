@@ -1,4 +1,5 @@
 from .bplustree import BPlusTree
-from .performance_analyzer import BruteForceDB, PerformanceAnalyzer
+from .bruteforce import BruteForceDB
+from .performance_analyzer import PerformanceAnalyzer
 
 __all__ = ["BPlusTree", "BruteForceDB", "PerformanceAnalyzer"]
