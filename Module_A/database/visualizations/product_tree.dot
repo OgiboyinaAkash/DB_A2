@@ -1,0 +1,20 @@
+// B+ Tree
+digraph {
+	2270798893408 [label="Internal | 10" fillcolor=lightgray shape=record style=filled]
+	2270243127168 [label="Internal | 4 | 7" fillcolor=lightgray shape=record style=filled]
+	2270243123088 [label="Leaf | 1 | 2 | 3" fillcolor=lightblue shape=record style=filled]
+	2270243127168 -> 2270243123088
+	2270791787696 [label="Leaf | 4 | 5 | 6" fillcolor=lightblue shape=record style=filled]
+	2270243127168 -> 2270791787696
+	2270798892160 [label="Leaf | 7 | 8 | 9" fillcolor=lightblue shape=record style=filled]
+	2270243127168 -> 2270798892160
+	2270798893408 -> 2270243127168
+	2270798893552 [label="Internal | 13 | 16" fillcolor=lightgray shape=record style=filled]
+	2270798891920 [label="Leaf | 10 | 11 | 12" fillcolor=lightblue shape=record style=filled]
+	2270798893552 -> 2270798891920
+	2270798891968 [label="Leaf | 13 | 14 | 15" fillcolor=lightblue shape=record style=filled]
+	2270798893552 -> 2270798891968
+	2270798893456 [label="Leaf | 16 | 17 | 18 | 19 | 20" fillcolor=lightblue shape=record style=filled]
+	2270798893552 -> 2270798893456
+	2270798893408 -> 2270798893552
+}

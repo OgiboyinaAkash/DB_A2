@@ -1,10 +1,10 @@
 """
-SubTask 5 API Benchmark Runner
-Measures endpoint response times before and after SQL indexing.
+API benchmark runner for SQL indexing analysis.
+Measures endpoint response times before and after index tuning.
 
 Usage examples:
-  python database/subtask5_api_benchmark.py --phase before --base-url http://127.0.0.1:5000
-  python database/subtask5_api_benchmark.py --phase after --base-url http://127.0.0.1:5000
+    python database/api_performance_benchmark.py --phase before --base-url http://127.0.0.1:5000
+    python database/api_performance_benchmark.py --phase after --base-url http://127.0.0.1:5000
 """
 
 import argparse
@@ -125,14 +125,14 @@ def run_benchmark(base_url, phase, repeats, username, password, output_dir):
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    report_file = output_path / f"subtask5_api_{phase}.json"
+    report_file = output_path / f"api_benchmark_{phase}.json"
     report_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     print(f"Saved benchmark report: {report_file}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run SubTask 5 API benchmarks")
+    parser = argparse.ArgumentParser(description="Run API performance benchmarks")
     parser.add_argument("--phase", required=True, choices=["before", "after"], help="Benchmark phase")
     parser.add_argument("--base-url", default="http://127.0.0.1:5000", help="API base URL")
     parser.add_argument("--repeats", type=int, default=30, help="Requests per endpoint")

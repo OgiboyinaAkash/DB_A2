@@ -1,4 +1,4 @@
--- SubTask 5: SQL Indexing Performance Benchmark
+-- SQL indexing performance benchmark
 -- Run this script in MySQL after loading Databases_A1.sql data.
 -- Use it in two phases:
 --   1) BEFORE index creation (drop indexes first)

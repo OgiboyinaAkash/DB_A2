@@ -334,18 +334,25 @@ class BPlusTree:
 
         return dot
 
+    def _table_label(self, node_type, keys, bg_color):
+        """Build an HTML-like table label for segmented box rendering."""
+        cells = [node_type] + [str(key) for key in keys]
+        row_cells = "".join(
+            f'<TD BGCOLOR="{bg_color}" BORDER="1" CELLPADDING="8">{cell}</TD>'
+            for cell in cells
+        )
+        return f'<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0"><TR>{row_cells}</TR></TABLE>>'
+
     def _add_nodes(self, dot, node):
         """Add graph nodes for visualization"""
         node_id = str(id(node))
         if node.is_leaf:
-            keys_str = ", ".join(str(key) for key in node.keys)
-            label = f"Leaf\n[{keys_str}]"
-            dot.node(node_id, label=label, shape="box", style="filled", fillcolor="lightblue")
+            label = self._table_label("Leaf", node.keys, "lightblue")
+            dot.node(node_id, label=label, shape="plain")
             return
 
-        keys_str = ", ".join(str(key) for key in node.keys)
-        label = f"Internal\n[{keys_str}]"
-        dot.node(node_id, label=label, shape="box", style="filled", fillcolor="lightgray")
+        label = self._table_label("Internal", node.keys, "lightgray")
+        dot.node(node_id, label=label, shape="plain")
         for child in node.children:
             self._add_nodes(dot, child)
 
