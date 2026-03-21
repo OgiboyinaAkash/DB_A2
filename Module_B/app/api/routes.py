@@ -2,27 +2,48 @@
 import hashlib
 import json
 import os
+import sys
 import time
 from datetime import datetime
+from pathlib import Path
 
 from flask import Blueprint, Response, g, jsonify, request
 
-from database.auth_manager import AuthenticationManager
-from database.db_init import DatabaseInitializer
-from database.group_manager import GroupManager
-from database.member_manager import MemberManager
-from database.sql_project_store import SQLProjectStore
+# Make Module_A database utilities importable after repository reorganization.
+MODULE_A_DB_PATH = Path(__file__).resolve().parents[3] / "Module_A" / "database"
+if MODULE_A_DB_PATH.exists() and str(MODULE_A_DB_PATH) not in sys.path:
+    sys.path.insert(0, str(MODULE_A_DB_PATH))
+
+from auth_manager import AuthenticationManager
+from db_init import DatabaseInitializer
+from group_manager import GroupManager
+from member_manager import MemberManager
+from sql_project_store import SQLProjectStore
 
 api = Blueprint("api", __name__)
 
 CORE_DB = "system_core"
 PROJECT_DB = "outlet_management"
+CORE_PROJECT_TABLE = "projects"
+CORE_MEMBER_PROJECT_MAPPING_TABLE = "member_project_mappings"
 PROJECT_TABLES = {
+    "members": "MemberID",
+    "staff": "StaffID",
     "products": "ProductID",
     "categories": "CategoryID",
     "customers": "CustomerID",
+    "suppliers": "SupplierID",
+    "purchase_orders": "POID",
+    "purchase_order_items": "POItemID",
     "sales": "SaleID",
     "sale_items": "SaleItemID",
+    "payments": "PaymentID",
+    "attendance": "AttendanceID",
+}
+ROLE_TABLE_ACCESS = {
+    "member": set(PROJECT_TABLES.keys()) | {CORE_PROJECT_TABLE},
+    "customer": {"products", "categories", "sales", "payments"},
+    "staff": {"products", "attendance", "categories", "customers", "sales", "sale_items", "payments"},
 }
 PUBLIC_ENDPOINTS = {
     "api.login",
@@ -42,6 +63,8 @@ MONITORED_TABLES = [
     (CORE_DB, "credentials"),
     (CORE_DB, "groups"),
     (CORE_DB, "member_group_mappings"),
+    (CORE_DB, CORE_PROJECT_TABLE),
+    (CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE),
 ]
 ENDPOINT_METRICS = {}
 
@@ -232,6 +255,122 @@ def _record_endpoint_metric(duration_ms, status_code):
     ENDPOINT_METRICS[metric_key] = existing
 
 
+def _ensure_member_project_tables():
+    projects_schema = {
+        "project_id": int,
+        "project_name": str,
+        "description": str,
+        "status": str,
+        "created_at": str,
+        "updated_at": str,
+    }
+    db_manager.create_table(
+        CORE_DB,
+        CORE_PROJECT_TABLE,
+        projects_schema,
+        order=8,
+        search_key="project_id",
+    )
+
+    mapping_schema = {
+        "mapping_id": int,
+        "member_id": int,
+        "project_id": int,
+        "assigned_at": str,
+    }
+    db_manager.create_table(
+        CORE_DB,
+        CORE_MEMBER_PROJECT_MAPPING_TABLE,
+        mapping_schema,
+        order=8,
+        search_key="mapping_id",
+    )
+
+
+def _next_table_id(table_name, id_field):
+    table, _ = db_manager.get_table(CORE_DB, table_name)
+    records = table.get_all()
+    if not records:
+        return 1
+    max_id = 0
+    for _, data in records:
+        value = data.get(id_field, 0)
+        if isinstance(value, int):
+            max_id = max(max_id, value)
+    return max_id + 1
+
+
+def _member_project_ids(member_id):
+    mapping_table, _ = db_manager.get_table(CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE)
+    mappings = mapping_table.get_all()
+    return {
+        row.get("project_id")
+        for _, row in mappings
+        if row.get("member_id") == member_id and isinstance(row.get("project_id"), int)
+    }
+
+
+def _project_record(project_id):
+    project_table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
+    return project_table.get(project_id)
+
+
+def _project_member_ids(project_id):
+    mapping_table, _ = db_manager.get_table(CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE)
+    mappings = mapping_table.get_all()
+    return {
+        row.get("member_id")
+        for _, row in mappings
+        if row.get("project_id") == project_id and isinstance(row.get("member_id"), int)
+    }
+
+
+def _member_projects(member_id):
+    project_ids = _member_project_ids(member_id)
+    projects = []
+    for project_id in sorted(project_ids):
+        project = _project_record(project_id)
+        if project:
+            projects.append(project)
+    return projects
+
+
+def _assign_member_to_project(member_id, project_id):
+    members_table, _ = db_manager.get_table(CORE_DB, "members")
+    if not members_table.get(member_id):
+        return {"success": False, "message": f"Member {member_id} not found"}
+
+    project = _project_record(project_id)
+    if not project:
+        return {"success": False, "message": f"Project {project_id} not found"}
+
+    mapping_table, _ = db_manager.get_table(CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE)
+    all_rows = mapping_table.get_all()
+    for _, row in all_rows:
+        if row.get("member_id") == member_id and row.get("project_id") == project_id:
+            return {"success": False, "message": "Member already assigned to project"}
+
+    mapping_id = _next_table_id(CORE_MEMBER_PROJECT_MAPPING_TABLE, "mapping_id")
+    record = {
+        "mapping_id": mapping_id,
+        "member_id": member_id,
+        "project_id": project_id,
+        "assigned_at": datetime.utcnow().isoformat(),
+    }
+    mapping_table.insert(record)
+    return {"success": True, "mapping_id": mapping_id, "record": record}
+
+
+def _remove_member_from_project(member_id, project_id):
+    mapping_table, _ = db_manager.get_table(CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE)
+    all_rows = mapping_table.get_all()
+    for record_id, row in all_rows:
+        if row.get("member_id") == member_id and row.get("project_id") == project_id:
+            mapping_table.delete(record_id)
+            return {"success": True, "message": "Member removed from project"}
+    return {"success": False, "message": "Member-project mapping not found"}
+
+
 def _seed_if_needed():
     members = member_manager.list_all_members()
     if members:
@@ -297,6 +436,37 @@ def _seed_if_needed():
                 "created_at": "2025-01-01T00:00:00",
             }
         )
+
+    project_table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
+    if not project_table.get_all():
+        now = datetime.utcnow().isoformat()
+        project_table.insert(
+            {
+                "project_id": 1,
+                "project_name": "Retail Dashboard Revamp",
+                "description": "Revamp dashboard and KPI widgets",
+                "status": "active",
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+        project_table.insert(
+            {
+                "project_id": 2,
+                "project_name": "POS Performance Audit",
+                "description": "Optimize checkout performance and reporting",
+                "status": "active",
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+
+    mapping_table, _ = db_manager.get_table(CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE)
+    if not mapping_table.get_all():
+        _assign_member_to_project(member_id=1, project_id=1)
+        _assign_member_to_project(member_id=2, project_id=1)
+        _assign_member_to_project(member_id=3, project_id=2)
+        _assign_member_to_project(member_id=4, project_id=2)
         products_table.insert(
             {
                 "product_id": 2,
@@ -310,6 +480,7 @@ def _seed_if_needed():
         )
 
 
+_ensure_member_project_tables()
 _seed_if_needed()
 _ensure_api_audit_state_table()
 
@@ -345,15 +516,53 @@ def _is_admin(member_id):
     return False
 
 
+def _resolve_member_role(member_id, member_record=None):
+    if _is_admin(member_id):
+        return "member"
+
+    member_record = member_record or member_manager.get_member(member_id) or {}
+    department = str(member_record.get("department", "")).strip().lower()
+    if department == "customer":
+        return "customer"
+
+    for group in _member_groups(member_id):
+        group_name = str(group.get("group_name", "")).strip().lower()
+        if group_name in {"customer", "customers"}:
+            return "customer"
+
+    return "staff"
+
+
+def _is_table_allowed(table_name, role_name):
+    allowed = ROLE_TABLE_ACCESS.get(role_name, set())
+    return table_name in allowed
+
+
+def _table_forbidden_response(table_name):
+    role_name = getattr(g, "role_name", "staff")
+    if _is_table_allowed(table_name, role_name):
+        return None
+    return (
+        jsonify(
+            {
+                "error": f"Role '{role_name}' cannot access table '{table_name}'",
+                "role": role_name,
+                "allowed_tables": sorted(ROLE_TABLE_ACCESS.get(role_name, set())),
+            }
+        ),
+        403,
+    )
+
+
 def _can_view_member(requester_id, target_id):
     if requester_id == target_id:
         return True
     if _is_admin(requester_id):
         return True
 
-    requester_group_ids = {group.get("group_id") for group in _member_groups(requester_id)}
-    target_group_ids = {group.get("group_id") for group in _member_groups(target_id)}
-    return bool(requester_group_ids.intersection(target_group_ids))
+    requester_project_ids = _member_project_ids(requester_id)
+    target_project_ids = _member_project_ids(target_id)
+    return bool(requester_project_ids.intersection(target_project_ids))
 
 
 def _allowed_self_portfolio_fields():
@@ -374,6 +583,8 @@ def _ensure_sql_backend():
 
 
 def _get_project_table_name(table_name):
+    if table_name == CORE_PROJECT_TABLE:
+        return table_name, "OK"
     if table_name not in PROJECT_TABLES:
         return None, f"Unsupported table '{table_name}'"
     return table_name, "OK"
@@ -458,6 +669,7 @@ def require_session_for_api_calls():
     g.current_member_id = member_id
     g.current_member = member
     g.is_admin = _is_admin(member_id)
+    g.role_name = _resolve_member_role(member_id, member)
     return None
 
 
@@ -541,6 +753,8 @@ def auth_me():
         {
             "member": g.current_member,
             "is_admin": g.is_admin,
+            "role": g.role_name,
+            "allowed_tables": sorted(ROLE_TABLE_ACCESS.get(g.role_name, set())),
             "groups": _member_groups(g.current_member_id),
         }
     )
@@ -570,7 +784,7 @@ def is_auth_legacy():
         {
             "message": "User is authenticated",
             "username": member.get("username"),
-            "role": "admin" if _is_admin(member_id) else "user",
+            "role": _resolve_member_role(member_id, member),
             "expiry": auth_manager.active_sessions.get(token, {}).get("expires_at"),
         }
     )
@@ -578,13 +792,22 @@ def is_auth_legacy():
 
 @api.route("/project/<table_name>", methods=["GET"])
 def list_project_records(table_name):
-    ok, status = _ensure_sql_backend()
-    if not ok:
-        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
-
     table_name, message = _get_project_table_name(table_name)
     if table_name is None:
         return jsonify({"error": message}), 404
+
+    forbidden = _table_forbidden_response(table_name)
+    if forbidden:
+        return forbidden
+
+    if table_name == CORE_PROJECT_TABLE:
+        table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
+        records = [{"id": data.get("project_id"), "data": data} for _, data in table.get_all()]
+        return jsonify({"table": table_name, "records": records, "count": len(records)})
+
+    ok, status = _ensure_sql_backend()
+    if not ok:
+        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
 
     filters, order_by = _build_sql_filters_and_order(table_name)
     try:
@@ -593,11 +816,18 @@ def list_project_records(table_name):
         return jsonify({"error": str(exc)}), 400
 
     id_key = {
+        "members": "member_id",
+        "staff": "staff_id",
         "products": "product_id",
         "categories": "category_id",
         "customers": "customer_id",
+        "suppliers": "supplier_id",
+        "purchase_orders": "poid",
+        "purchase_order_items": "po_item_id",
         "sales": "sale_id",
         "sale_items": "sale_item_id",
+        "payments": "payment_id",
+        "attendance": "attendance_id",
     }[table_name]
     records = [{"id": record_data.get(id_key), "data": record_data} for record_data in records_raw]
     return jsonify({"table": table_name, "records": records, "count": len(records)})
@@ -605,18 +835,28 @@ def list_project_records(table_name):
 
 @api.route("/project/<table_name>/<record_id>", methods=["GET"])
 def get_project_record(table_name, record_id):
-    ok, status = _ensure_sql_backend()
-    if not ok:
-        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
-
     table_name, message = _get_project_table_name(table_name)
     if table_name is None:
         return jsonify({"error": message}), 404
+
+    forbidden = _table_forbidden_response(table_name)
+    if forbidden:
+        return forbidden
 
     try:
         normalized_id = _coerce_record_id(record_id)
     except ValueError:
         return jsonify({"error": "Invalid record id type"}), 400
+
+    if table_name == CORE_PROJECT_TABLE:
+        record = _project_record(normalized_id)
+        if record is None:
+            return jsonify({"error": "Record not found"}), 404
+        return jsonify({"id": normalized_id, "data": record})
+
+    ok, status = _ensure_sql_backend()
+    if not ok:
+        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
 
     record = sql_project_store.get_record(table_name, normalized_id)
     if record is None:
@@ -630,17 +870,46 @@ def create_project_record(table_name):
     if forbidden:
         return forbidden
 
-    ok, status = _ensure_sql_backend()
-    if not ok:
-        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
-
     table_name, message = _get_project_table_name(table_name)
     if table_name is None:
         return jsonify({"error": message}), 404
 
+    forbidden = _table_forbidden_response(table_name)
+    if forbidden:
+        return forbidden
+
     payload = request.get_json(silent=True)
     if not payload:
         return jsonify({"error": "Record data is required"}), 400
+
+    if table_name == CORE_PROJECT_TABLE:
+        table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
+        project_id = payload.get("project_id") if isinstance(payload.get("project_id"), int) else _next_table_id(CORE_PROJECT_TABLE, "project_id")
+        all_projects = table.get_all()
+        for _, row in all_projects:
+            if row.get("project_id") == project_id:
+                return jsonify({"error": f"Project {project_id} already exists"}), 400
+            if row.get("project_name") == payload.get("project_name"):
+                return jsonify({"error": "Project name already exists"}), 400
+
+        now = datetime.utcnow().isoformat()
+        record = {
+            "project_id": project_id,
+            "project_name": payload.get("project_name", "").strip(),
+            "description": payload.get("description", ""),
+            "status": payload.get("status", "active"),
+            "created_at": payload.get("created_at", now),
+            "updated_at": now,
+        }
+        if not record["project_name"]:
+            return jsonify({"error": "project_name is required"}), 400
+        table.insert(record)
+        _audit_write("create", CORE_DB, CORE_PROJECT_TABLE, project_id, "success", "Project created")
+        return jsonify({"message": "Record created", "id": project_id}), 201
+
+    ok, status = _ensure_sql_backend()
+    if not ok:
+        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
 
     if isinstance(payload, list):
         results = []
@@ -670,13 +939,13 @@ def update_project_record(table_name, record_id):
     if forbidden:
         return forbidden
 
-    ok, status = _ensure_sql_backend()
-    if not ok:
-        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
-
     table_name, message = _get_project_table_name(table_name)
     if table_name is None:
         return jsonify({"error": message}), 404
+
+    forbidden = _table_forbidden_response(table_name)
+    if forbidden:
+        return forbidden
 
     payload = request.get_json(silent=True)
     if not payload:
@@ -686,6 +955,26 @@ def update_project_record(table_name, record_id):
         normalized_id = _coerce_record_id(record_id)
     except ValueError:
         return jsonify({"error": "Invalid record id type"}), 400
+
+    if table_name == CORE_PROJECT_TABLE:
+        table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
+        current = table.get(normalized_id)
+        if not current:
+            _audit_write("update", CORE_DB, CORE_PROJECT_TABLE, normalized_id, "failed", "Record not found")
+            return jsonify({"error": "Record not found"}), 404
+
+        updated = current.copy()
+        for field in ("project_name", "description", "status"):
+            if field in payload:
+                updated[field] = payload[field]
+        updated["updated_at"] = datetime.utcnow().isoformat()
+        table.update(normalized_id, updated)
+        _audit_write("update", CORE_DB, CORE_PROJECT_TABLE, normalized_id, "success", "Project updated")
+        return jsonify({"message": f"Record '{normalized_id}' updated successfully"})
+
+    ok, status = _ensure_sql_backend()
+    if not ok:
+        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
 
     try:
         updated = sql_project_store.update_record(table_name, normalized_id, payload)
@@ -707,18 +996,39 @@ def delete_project_record(table_name, record_id):
     if forbidden:
         return forbidden
 
-    ok, status = _ensure_sql_backend()
-    if not ok:
-        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
-
     table_name, message = _get_project_table_name(table_name)
     if table_name is None:
         return jsonify({"error": message}), 404
+
+    forbidden = _table_forbidden_response(table_name)
+    if forbidden:
+        return forbidden
 
     try:
         normalized_id = _coerce_record_id(record_id)
     except ValueError:
         return jsonify({"error": "Invalid record id type"}), 400
+
+    if table_name == CORE_PROJECT_TABLE:
+        table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
+        current = table.get(normalized_id)
+        if not current:
+            _audit_write("delete", CORE_DB, CORE_PROJECT_TABLE, normalized_id, "failed", "Record not found")
+            return jsonify({"error": "Record not found"}), 404
+
+        mapping_table, _ = db_manager.get_table(CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE)
+        all_maps = mapping_table.get_all()
+        for map_id, row in all_maps:
+            if row.get("project_id") == normalized_id:
+                mapping_table.delete(map_id)
+
+        table.delete(normalized_id)
+        _audit_write("delete", CORE_DB, CORE_PROJECT_TABLE, normalized_id, "success", "Project deleted")
+        return jsonify({"message": f"Record '{normalized_id}' deleted successfully"})
+
+    ok, status = _ensure_sql_backend()
+    if not ok:
+        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
 
     try:
         deleted = sql_project_store.delete_record(table_name, normalized_id)
@@ -751,6 +1061,7 @@ def member_portfolio():
                     "department": member.get("department"),
                     "status": member.get("status"),
                     "groups": _member_groups(member_id),
+                    "projects": _member_projects(member_id),
                 }
             )
 
@@ -770,9 +1081,133 @@ def member_portfolio_detail(member_id):
         {
             "member": member,
             "groups": _member_groups(member_id),
+            "projects": _member_projects(member_id),
             "can_manage": g.is_admin,
         }
     )
+
+
+@api.route("/members", methods=["GET"])
+def list_members():
+    members = member_manager.list_all_members()
+    return jsonify({"records": members, "count": len(members)})
+
+
+@api.route("/members/<int:member_id>", methods=["GET"])
+def get_member(member_id):
+    member = member_manager.get_member(member_id)
+    if not member:
+        return jsonify({"error": "Member not found"}), 404
+
+    if not _can_view_member(g.current_member_id, member_id):
+        return jsonify({"error": "Permission denied for this member profile"}), 403
+
+    return jsonify({"member": member, "projects": _member_projects(member_id)})
+
+
+@api.route("/members", methods=["POST"])
+def create_member():
+    forbidden = _admin_forbidden_response()
+    if forbidden:
+        return forbidden
+
+    payload = request.get_json(silent=True) or {}
+    required = ["username", "email", "full_name", "department", "password"]
+    missing = [field for field in required if not payload.get(field)]
+    if missing:
+        return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
+
+    result = member_manager.create_member(
+        username=payload["username"],
+        email=payload["email"],
+        full_name=payload["full_name"],
+        department=payload["department"],
+        password=payload["password"],
+    )
+    if not result.get("success"):
+        return jsonify({"error": result.get("message", "Create failed")}), 400
+    return jsonify(result), 201
+
+
+@api.route("/members/<int:member_id>", methods=["PUT"])
+def update_member(member_id):
+    payload = request.get_json(silent=True) or {}
+
+    if not (g.is_admin or g.current_member_id == member_id):
+        return jsonify({"error": "Permission denied"}), 403
+
+    if not g.is_admin:
+        allowed_fields = _allowed_self_portfolio_fields()
+        payload = {key: value for key, value in payload.items() if key in allowed_fields}
+
+    if not payload:
+        return jsonify({"error": "No valid fields provided"}), 400
+
+    result = member_manager.update_member(member_id, payload)
+    if not result.get("success"):
+        return jsonify({"error": result.get("message", "Update failed")}), 400
+    return jsonify(result)
+
+
+@api.route("/members/<int:member_id>", methods=["DELETE"])
+def delete_member(member_id):
+    forbidden = _admin_forbidden_response()
+    if forbidden:
+        return forbidden
+
+    result = member_manager.delete_member(member_id)
+    if not result.get("success"):
+        return jsonify({"error": result.get("message", "Delete failed")}), 400
+    return jsonify(result)
+
+
+@api.route("/projects/<int:project_id>/members", methods=["GET"])
+def project_members(project_id):
+    project = _project_record(project_id)
+    if not project:
+        return jsonify({"error": "Project not found"}), 404
+
+    member_ids = sorted(_project_member_ids(project_id))
+    members = []
+    for member_id in member_ids:
+        member = member_manager.get_member(member_id)
+        if member:
+            members.append(member)
+
+    return jsonify({"project": project, "members": members, "count": len(members)})
+
+
+@api.route("/projects/<int:project_id>/members", methods=["POST"])
+def add_member_to_project(project_id):
+    forbidden = _admin_forbidden_response()
+    if forbidden:
+        return forbidden
+
+    payload = request.get_json(silent=True) or {}
+    member_id = payload.get("member_id")
+    if not isinstance(member_id, int):
+        return jsonify({"error": "member_id (int) is required"}), 400
+
+    result = _assign_member_to_project(member_id, project_id)
+    if not result.get("success"):
+        return jsonify({"error": result.get("message", "Assignment failed")}), 400
+
+    _audit_write("create", CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE, result.get("mapping_id", -1), "success", f"Assigned member {member_id} to project {project_id}")
+    return jsonify(result), 201
+
+
+@api.route("/projects/<int:project_id>/members/<int:member_id>", methods=["DELETE"])
+def remove_member_from_project(project_id, member_id):
+    forbidden = _admin_forbidden_response()
+    if forbidden:
+        return forbidden
+
+    result = _remove_member_from_project(member_id, project_id)
+    if not result.get("success"):
+        return jsonify({"error": result.get("message", "Removal failed")}), 400
+
+    _audit_write("delete", CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE, member_id, "success", f"Removed member {member_id} from project {project_id}")
+    return jsonify(result)
 
 
 @api.route("/member-portfolio/me", methods=["PUT"])

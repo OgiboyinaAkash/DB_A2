@@ -6,6 +6,61 @@ const roleBadge = document.getElementById("roleBadge");
 
 let sessionToken = "";
 let isAdminUser = false;
+let currentRole = "guest";
+
+const SQL_TABLES_EXTRACTED = [
+  "members",
+  "customers",
+  "staff",
+  "categories",
+  "products",
+  "suppliers",
+  "purchase_orders",
+  "purchase_order_items",
+  "sales",
+  "sale_items",
+  "payments",
+  "attendance",
+  "projects",
+];
+
+const TABLES_BY_ROLE = {
+  member: SQL_TABLES_EXTRACTED,
+  customer: ["products", "categories", "sales", "payments"],
+  staff: ["products", "attendance", "categories", "customers", "sales", "sale_items", "payments"],
+};
+
+const QUICK_LOGIN = {
+  member: { username: "aarav", password: "Aarav@123" },
+  staff: { username: "vivaan", password: "Vivaan@123" },
+  customer: { username: "customer1", password: "Customer@123" },
+};
+
+function tableSelectEl() {
+  return document.getElementById("tableSelect");
+}
+
+function renderTableOptions(tableNames) {
+  const select = tableSelectEl();
+  const current = select.value;
+  select.innerHTML = "";
+
+  tableNames.forEach((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+  });
+
+  if (tableNames.includes(current)) {
+    select.value = current;
+  }
+}
+
+function applyTableVisibility() {
+  const allowedTables = TABLES_BY_ROLE[currentRole] || [];
+  renderTableOptions(allowedTables);
+}
 
 const controlsToToggle = [
   "meButton",
@@ -28,6 +83,9 @@ const adminOnlyControls = [
 ];
 
 function setAuthenticated(enabled) {
+  document.body.classList.toggle("logged-in", enabled);
+  document.body.classList.toggle("logged-out", !enabled);
+
   controlsToToggle.forEach((id) => {
     document.getElementById(id).disabled = !enabled;
   });
@@ -36,6 +94,7 @@ function setAuthenticated(enabled) {
     adminOnlyControls.forEach((id) => {
       document.getElementById(id).disabled = true;
     });
+    renderTableOptions([]);
   }
 }
 
@@ -43,26 +102,78 @@ function applyRolePermissions() {
   adminOnlyControls.forEach((id) => {
     document.getElementById(id).disabled = !isAdminUser;
   });
-  roleBadge.textContent = isAdminUser
-    ? "Role: Admin (full CRUD + group management)"
-    : "Role: Regular User (read-only project data + update own portfolio)";
+  applyTableVisibility();
+  roleBadge.textContent = `Role: ${currentRole}`;
 }
 
 function setOutput(el, data) {
   el.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
 }
 
+function formatWhoAmI(me, token = "") {
+  const member = me.member || {};
+  const groups = Array.isArray(me.groups) ? me.groups : [];
+  const allowedTables = Array.isArray(me.allowed_tables) ? me.allowed_tables : [];
+  const groupSummary = groups.length
+    ? groups.map((g) => `${g.group_name} (${g.role_in_group})`).join(", ")
+    : "None";
+
+  const lines = [
+    "Authenticated User",
+    "------------------",
+    `Username: ${member.username || "N/A"}`,
+    `Member ID: ${member.member_id ?? "N/A"}`,
+    `Full Name: ${member.full_name || "N/A"}`,
+    `Email: ${member.email || "N/A"}`,
+    `Department: ${member.department || "N/A"}`,
+    `Status: ${member.status || "N/A"}`,
+    `Role: ${me.role || currentRole}`,
+    `Admin: ${Boolean(me.is_admin)}`,
+    `Groups: ${groupSummary}`,
+    `Allowed Tables: ${allowedTables.join(", ") || "None"}`,
+  ];
+
+  if (token) {
+    lines.push(`Session Token: ${token}`);
+  }
+
+  return lines.join("\n");
+}
+
 async function apiCall(path, options = {}) {
-  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
-  if (sessionToken) {
-    headers.Authorization = `Bearer ${sessionToken}`;
+  return window.ApiService.call(path, options);
+}
+
+async function authenticate(username, password) {
+  const result = await apiCall("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+
+  sessionToken = result.session_token;
+  window.ApiService.setToken(sessionToken);
+  setAuthenticated(true);
+
+  const me = await apiCall("/api/auth/me");
+  isAdminUser = Boolean(me.is_admin);
+  currentRole = me.role || (isAdminUser ? "member" : "staff");
+  applyRolePermissions();
+  setOutput(authStatus, formatWhoAmI(me, sessionToken));
+  return { login: result, me };
+}
+
+function resetAuthState(messageText) {
+  setAuthenticated(false);
+  sessionToken = "";
+  window.ApiService.setToken("");
+  isAdminUser = false;
+  currentRole = "guest";
+  roleBadge.textContent = "";
+  if (messageText) {
+    setOutput(authStatus, messageText);
+  } else {
+    authStatus.textContent = "";
   }
-  const response = await fetch(path, { ...options, headers });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || `HTTP ${response.status}`);
-  }
-  return data;
 }
 
 document.getElementById("loginForm").addEventListener("submit", async (event) => {
@@ -71,30 +182,28 @@ document.getElementById("loginForm").addEventListener("submit", async (event) =>
   const password = document.getElementById("password").value;
 
   try {
-    const result = await apiCall("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    });
-    sessionToken = result.session_token;
-    setAuthenticated(true);
-    isAdminUser = false;
-    try {
-      const me = await apiCall("/api/auth/me");
-      isAdminUser = Boolean(me.is_admin);
-      applyRolePermissions();
-    } catch (_) {
-      isAdminUser = false;
-      applyRolePermissions();
-    }
-    setOutput(authStatus, result);
+    await authenticate(username, password);
   } catch (error) {
-    setAuthenticated(false);
-    sessionToken = "";
-    isAdminUser = false;
-    roleBadge.textContent = "Role: Not authenticated";
-    setOutput(authStatus, `Login failed: ${error.message}`);
+    resetAuthState(`Login failed: ${error.message}`);
   }
 });
+
+function bindQuickLogin(buttonId, roleKey) {
+  document.getElementById(buttonId).addEventListener("click", async () => {
+    const creds = QUICK_LOGIN[roleKey];
+    document.getElementById("username").value = creds.username;
+    document.getElementById("password").value = creds.password;
+    try {
+      await authenticate(creds.username, creds.password);
+    } catch (error) {
+      resetAuthState(`Login failed: ${error.message}`);
+    }
+  });
+}
+
+bindQuickLogin("loginAsMemberBtn", "member");
+bindQuickLogin("loginAsStaffBtn", "staff");
+bindQuickLogin("loginAsCustomerBtn", "customer");
 
 document.getElementById("logoutButton").addEventListener("click", async () => {
   try {
@@ -103,10 +212,7 @@ document.getElementById("logoutButton").addEventListener("click", async () => {
   } catch (error) {
     setOutput(authStatus, `Logout failed: ${error.message}`);
   } finally {
-    sessionToken = "";
-    isAdminUser = false;
-    setAuthenticated(false);
-    roleBadge.textContent = "Role: Not authenticated";
+    resetAuthState("");
   }
 });
 
@@ -114,8 +220,9 @@ document.getElementById("meButton").addEventListener("click", async () => {
   try {
     const result = await apiCall("/api/auth/me");
     isAdminUser = Boolean(result.is_admin);
+    currentRole = result.role || (isAdminUser ? "member" : "staff");
     applyRolePermissions();
-    setOutput(authStatus, result);
+    setOutput(authStatus, formatWhoAmI(result, sessionToken));
   } catch (error) {
     setOutput(authStatus, `Request failed: ${error.message}`);
   }
@@ -308,7 +415,8 @@ document.getElementById("adminUnauthorizedCheckBtn").addEventListener("click", a
 
 setAuthenticated(false);
 applyRolePermissions();
-setOutput(authStatus, "Not authenticated");
+roleBadge.textContent = "";
+authStatus.textContent = "";
 setOutput(crudOutput, "Login first to use CRUD endpoints.");
 setOutput(portfolioOutput, "Login first to view member portfolio.");
 setOutput(adminOutput, "Admin actions require admin role.");

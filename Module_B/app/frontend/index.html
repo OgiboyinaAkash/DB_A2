@@ -6,11 +6,11 @@
   <title>Outlet Management - SubTask 2</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="logged-out">
   <main class="app-shell">
     <section class="panel auth-panel">
       <h1>Outlet Management API UI</h1>
-      <p class="subtitle">SubTask 2: Authenticated CRUD + Member Portfolio</p>
+      <p class="subtitle">Role-based access portal</p>
 
       <form id="loginForm" class="form-grid">
         <label>
@@ -24,6 +24,12 @@
         <button type="submit">Login</button>
       </form>
 
+      <div class="action-grid quick-login-grid">
+        <button id="loginAsMemberBtn" type="button">Login as Member</button>
+        <button id="loginAsStaffBtn" type="button">Login as Staff</button>
+        <button id="loginAsCustomerBtn" type="button">Login as Customer</button>
+      </div>
+
       <div class="quick-help">
         <strong>Demo Accounts:</strong>
         <ul>
@@ -34,12 +40,12 @@
         </ul>
       </div>
 
-      <div class="session-row">
+      <div class="session-row post-login-only">
         <button id="meButton" disabled>Who Am I</button>
         <button id="logoutButton" disabled>Logout</button>
       </div>
-      <p id="roleBadge" class="subtitle">Role: Not authenticated</p>
-      <pre id="authStatus" class="output"></pre>
+      <p id="roleBadge" class="subtitle post-login-only"></p>
+      <pre id="authStatus" class="output post-login-only"></pre>
     </section>
 
     <section class="panel crud-panel">
@@ -47,13 +53,7 @@
       <div class="controls">
         <label>
           Table
-          <select id="tableSelect">
-            <option value="products">products</option>
-            <option value="categories">categories</option>
-            <option value="customers">customers</option>
-            <option value="sales">sales</option>
-            <option value="sale_items">sale_items</option>
-          </select>
+          <select id="tableSelect"></select>
         </label>
         <label>
           Record ID (for Read/Update/Delete)
@@ -71,14 +71,10 @@
 
       <label class="payload-label">
         JSON Payload (Create/Update)
-        <textarea id="payloadInput" rows="10">{
-  "product_id": 3,
-  "name": "Headphones",
-  "price": 2000.0,
-  "stock_quantity": 100,
-  "reorder_level": 10,
-  "category_id": 1,
-  "created_at": "2025-01-01T00:00:00"
+          <textarea id="payloadInput" rows="10">{
+        "project_name": "Warehouse Automation",
+        "description": "RFID-based inventory tracking",
+        "status": "active"
 }</textarea>
       </label>
 
@@ -143,6 +139,7 @@
     </section>
   </main>
 
+  <script src="apiService.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

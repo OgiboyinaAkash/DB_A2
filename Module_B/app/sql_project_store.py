@@ -12,6 +12,21 @@ from pymysql.cursors import DictCursor
 
 class SQLProjectStore:
     TABLE_CONFIG = {
+        "members": {
+            "table": "Member",
+            "pk": "MemberID",
+            "cols": ["Name", "Image", "Age", "Email", "ContactNumber", "Role", "CreatedAt"],
+            "api_to_db": {
+                "member_id": "MemberID",
+                "name": "Name",
+                "image": "Image",
+                "age": "Age",
+                "email": "Email",
+                "contact_number": "ContactNumber",
+                "role": "Role",
+                "created_at": "CreatedAt",
+            },
+        },
         "products": {
             "table": "Product",
             "pk": "ProductID",
@@ -49,6 +64,56 @@ class SQLProjectStore:
                 "created_at": "CreatedAt",
             },
         },
+        "staff": {
+            "table": "Staff",
+            "pk": "StaffID",
+            "cols": ["Name", "Role", "Salary", "ContactNumber", "JoinDate", "MemberID"],
+            "api_to_db": {
+                "staff_id": "StaffID",
+                "name": "Name",
+                "role": "Role",
+                "salary": "Salary",
+                "contact_number": "ContactNumber",
+                "join_date": "JoinDate",
+                "member_id": "MemberID",
+            },
+        },
+        "suppliers": {
+            "table": "Supplier",
+            "pk": "SupplierID",
+            "cols": ["Name", "ContactNumber", "Email", "Address"],
+            "api_to_db": {
+                "supplier_id": "SupplierID",
+                "name": "Name",
+                "contact_number": "ContactNumber",
+                "email": "Email",
+                "address": "Address",
+            },
+        },
+        "purchase_orders": {
+            "table": "PurchaseOrder",
+            "pk": "POID",
+            "cols": ["SupplierID", "OrderDate", "TotalAmount", "Status"],
+            "api_to_db": {
+                "poid": "POID",
+                "supplier_id": "SupplierID",
+                "order_date": "OrderDate",
+                "total_amount": "TotalAmount",
+                "status": "Status",
+            },
+        },
+        "purchase_order_items": {
+            "table": "PurchaseOrderItem",
+            "pk": "POItemID",
+            "cols": ["POID", "ProductID", "Quantity", "CostPrice"],
+            "api_to_db": {
+                "po_item_id": "POItemID",
+                "poid": "POID",
+                "product_id": "ProductID",
+                "quantity": "Quantity",
+                "cost_price": "CostPrice",
+            },
+        },
         "sales": {
             "table": "Sale",
             "pk": "SaleID",
@@ -71,6 +136,30 @@ class SQLProjectStore:
                 "product_id": "ProductID",
                 "quantity": "Quantity",
                 "unit_price": "UnitPrice",
+            },
+        },
+        "payments": {
+            "table": "Payment",
+            "pk": "PaymentID",
+            "cols": ["SaleID", "PaymentMethod", "Amount", "PaymentDate"],
+            "api_to_db": {
+                "payment_id": "PaymentID",
+                "sale_id": "SaleID",
+                "payment_method": "PaymentMethod",
+                "amount": "Amount",
+                "payment_date": "PaymentDate",
+            },
+        },
+        "attendance": {
+            "table": "Attendance",
+            "pk": "AttendanceID",
+            "cols": ["StaffID", "EntryTime", "ExitTime", "WorkDate"],
+            "api_to_db": {
+                "attendance_id": "AttendanceID",
+                "staff_id": "StaffID",
+                "entry_time": "EntryTime",
+                "exit_time": "ExitTime",
+                "work_date": "WorkDate",
             },
         },
     }
