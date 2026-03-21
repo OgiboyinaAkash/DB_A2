@@ -1,0 +1,25 @@
+// B+ Tree
+digraph {
+	2632888029296 [label="Internal | 13" fillcolor=lightgray shape=record style=filled]
+	2632859388768 [label="Internal | 7 | 10" fillcolor=lightgray shape=record style=filled]
+	2632858807632 [label="Leaf | 1 | 2 | 3 | 4 | 5" fillcolor=lightblue shape=record style=filled]
+	2632878740144 [label="Leaf | 7 | 8 | 9" fillcolor=lightblue shape=record style=filled]
+	2632878751664 [label="Leaf | 10 | 11 | 12" fillcolor=lightblue shape=record style=filled]
+	2632888028960 [label="Internal | 16 | 19" fillcolor=lightgray shape=record style=filled]
+	2632887097472 [label="Leaf | 13 | 14 | 15" fillcolor=lightblue shape=record style=filled]
+	2632879624448 [label="Leaf | 16 | 17 | 18" fillcolor=lightblue shape=record style=filled]
+	2632888033280 [label="Leaf | 19 | 20 | 21" fillcolor=lightblue shape=record style=filled]
+	2632888029296 -> 2632859388768
+	2632859388768 -> 2632858807632
+	2632859388768 -> 2632878740144
+	2632859388768 -> 2632878751664
+	2632888029296 -> 2632888028960
+	2632888028960 -> 2632887097472
+	2632888028960 -> 2632879624448
+	2632888028960 -> 2632888033280
+	2632858807632 -> 2632878740144 [label=next color=blue constraint=false style=dashed]
+	2632878740144 -> 2632878751664 [label=next color=blue constraint=false style=dashed]
+	2632878751664 -> 2632887097472 [label=next color=blue constraint=false style=dashed]
+	2632887097472 -> 2632879624448 [label=next color=blue constraint=false style=dashed]
+	2632879624448 -> 2632888033280 [label=next color=blue constraint=false style=dashed]
+}

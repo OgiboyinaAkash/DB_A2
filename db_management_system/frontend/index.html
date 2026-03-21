@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Outlet Management - SubTask 2</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <section class="panel auth-panel">
+      <h1>Outlet Management API UI</h1>
+      <p class="subtitle">SubTask 2: Authenticated CRUD + Member Portfolio</p>
+
+      <form id="loginForm" class="form-grid">
+        <label>
+          Username
+          <input id="username" name="username" type="text" placeholder="aarav" required />
+        </label>
+        <label>
+          Password
+          <input id="password" name="password" type="password" placeholder="Aarav@123" required />
+        </label>
+        <button type="submit">Login</button>
+      </form>
+
+      <div class="quick-help">
+        <strong>Demo Accounts:</strong>
+        <ul>
+          <li>aarav / Aarav@123 (admin)</li>
+          <li>vivaan / Vivaan@123</li>
+          <li>ananya / Ananya@123</li>
+          <li>rohan / Rohan@123</li>
+        </ul>
+      </div>
+
+      <div class="session-row">
+        <button id="meButton" disabled>Who Am I</button>
+        <button id="logoutButton" disabled>Logout</button>
+      </div>
+      <p id="roleBadge" class="subtitle">Role: Not authenticated</p>
+      <pre id="authStatus" class="output"></pre>
+    </section>
+
+    <section class="panel crud-panel">
+      <h2>Project Table CRUD</h2>
+      <div class="controls">
+        <label>
+          Table
+          <select id="tableSelect">
+            <option value="products">products</option>
+            <option value="categories">categories</option>
+            <option value="customers">customers</option>
+            <option value="sales">sales</option>
+            <option value="sale_items">sale_items</option>
+          </select>
+        </label>
+        <label>
+          Record ID (for Read/Update/Delete)
+          <input id="recordIdInput" type="text" placeholder="1" />
+        </label>
+      </div>
+
+      <div class="action-grid">
+        <button id="listBtn" disabled>List All</button>
+        <button id="getBtn" disabled>Get One</button>
+        <button id="createBtn" disabled>Create</button>
+        <button id="updateBtn" disabled>Update</button>
+        <button id="deleteBtn" disabled>Delete</button>
+      </div>
+
+      <label class="payload-label">
+        JSON Payload (Create/Update)
+        <textarea id="payloadInput" rows="10">{
+  "product_id": 3,
+  "name": "Headphones",
+  "price": 2000.0,
+  "stock_quantity": 100,
+  "reorder_level": 10,
+  "category_id": 1,
+  "created_at": "2025-01-01T00:00:00"
+}</textarea>
+      </label>
+
+      <pre id="crudOutput" class="output"></pre>
+    </section>
+
+    <section class="panel portfolio-panel">
+      <h2>Member Portfolio (Permission Filtered)</h2>
+      <div class="controls">
+        <label>
+          Member ID (optional)
+          <input id="portfolioMemberId" type="text" placeholder="2" />
+        </label>
+      </div>
+      <div class="action-grid">
+        <button id="portfolioListBtn" disabled>View Accessible Profiles</button>
+        <button id="portfolioOneBtn" disabled>View One Profile</button>
+      </div>
+      <pre id="portfolioOutput" class="output"></pre>
+
+      <h3>Update My Portfolio (Regular Users Allowed)</h3>
+      <label class="payload-label">
+        JSON Payload (allowed: full_name, email, department)
+        <textarea id="selfPortfolioPayload" rows="6">{
+  "full_name": "Updated Name",
+  "email": "updated.email@example.com",
+  "department": "Operations"
+}</textarea>
+      </label>
+      <div class="action-grid">
+        <button id="updateSelfPortfolioBtn" disabled>Update My Portfolio</button>
+      </div>
+    </section>
+
+    <section class="panel admin-panel">
+      <h2>Admin Controls (RBAC Protected)</h2>
+      <div class="controls">
+        <label>
+          Group ID
+          <input id="adminGroupId" type="number" min="1" placeholder="1" />
+        </label>
+        <label>
+          Member ID
+          <input id="adminMemberId" type="number" min="1" placeholder="2" />
+        </label>
+        <label>
+          Role
+          <select id="adminRole">
+            <option value="user">user</option>
+            <option value="admin">admin</option>
+            <option value="viewer">viewer</option>
+          </select>
+        </label>
+      </div>
+      <div class="action-grid">
+        <button id="adminListGroupsBtn" disabled>List Groups + Members</button>
+        <button id="adminAddToGroupBtn" disabled>Add Member To Group</button>
+        <button id="adminRemoveFromGroupBtn" disabled>Remove Member From Group</button>
+        <button id="adminUnauthorizedCheckBtn" disabled>Unauthorized Change Check</button>
+      </div>
+      <pre id="adminOutput" class="output"></pre>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

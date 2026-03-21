@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Local runtime outputs
+*.log
+db_management_system/database/benchmark_results/*.json
+
+# Temporary extraction artifacts
+assignment2_extracted.txt
