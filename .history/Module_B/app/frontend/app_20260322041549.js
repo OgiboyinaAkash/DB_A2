@@ -45,7 +45,6 @@ function syncUsernameByRole() {
   const selectedRole = roleSelectEl().value;
   const mapping = ROLE_LOGIN_MAP[selectedRole] || ROLE_LOGIN_MAP.admin;
   document.getElementById("username").value = mapping.username;
-}
 
 function tableSelectEl() {
   return document.getElementById("tableSelect");

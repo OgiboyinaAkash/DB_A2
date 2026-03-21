@@ -374,15 +374,6 @@ def _remove_member_from_project(member_id, project_id):
 def _seed_if_needed():
     members = member_manager.list_all_members()
     if members:
-        existing_usernames = {m.get("username") for m in members}
-        if "customer1" not in existing_usernames:
-            member_manager.create_member(
-                username="customer1",
-                email="customer1@example.com",
-                full_name="Portal Customer",
-                department="Customer",
-                password="Customer@123",
-            )
         return
 
     seed_members = [
@@ -418,14 +409,6 @@ def _seed_if_needed():
 
     for member in seed_members:
         member_manager.create_member(**member)
-
-    member_manager.create_member(
-        username="customer1",
-        email="customer1@example.com",
-        full_name="Portal Customer",
-        department="Customer",
-        password="Customer@123",
-    )
 
     groups = [
         ("admins", "System administrators"),
