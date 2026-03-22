@@ -1,0 +1,261 @@
+{
+  "phase": "before",
+  "timestamp": "2026-03-22T01:29:03.159565",
+  "base_url": "http://127.0.0.1:5000",
+  "repeats": 30,
+  "api_results": [
+    {
+      "endpoint": "GET /api/project/products",
+      "repeats": 30,
+      "avg_ms": 14.944,
+      "p95_ms": 33.4,
+      "min_ms": 4.736,
+      "max_ms": 59.129,
+      "errors": 0
+    },
+    {
+      "endpoint": "GET /api/project/products?category_id=1&sort=price_desc",
+      "repeats": 30,
+      "avg_ms": 14.315,
+      "p95_ms": 24.784,
+      "min_ms": 6.582,
+      "max_ms": 36.604,
+      "errors": 0
+    },
+    {
+      "endpoint": "GET /api/project/products/1",
+      "repeats": 30,
+      "avg_ms": 12.398,
+      "p95_ms": 22.95,
+      "min_ms": 5.923,
+      "max_ms": 30.716,
+      "errors": 0
+    },
+    {
+      "endpoint": "GET /api/project/customers",
+      "repeats": 30,
+      "avg_ms": 11.965,
+      "p95_ms": 23.084,
+      "min_ms": 4.487,
+      "max_ms": 30.095,
+      "errors": 0
+    },
+    {
+      "endpoint": "GET /api/project/customers?email=rahul.verma@example.com",
+      "repeats": 30,
+      "avg_ms": 14.242,
+      "p95_ms": 27.873,
+      "min_ms": 6.015,
+      "max_ms": 35.141,
+      "errors": 0
+    },
+    {
+      "endpoint": "GET /api/project/sales",
+      "repeats": 30,
+      "avg_ms": 13.062,
+      "p95_ms": 23.45,
+      "min_ms": 6.334,
+      "max_ms": 27.245,
+      "errors": 0
+    },
+    {
+      "endpoint": "GET /api/project/sales?customer_id=1&sort=sale_date_desc",
+      "repeats": 30,
+      "avg_ms": 13.76,
+      "p95_ms": 25.543,
+      "min_ms": 5.406,
+      "max_ms": 28.593,
+      "errors": 0
+    },
+    {
+      "endpoint": "GET /api/project/sale_items",
+      "repeats": 30,
+      "avg_ms": 14.52,
+      "p95_ms": 26.878,
+      "min_ms": 6.549,
+      "max_ms": 32.512,
+      "errors": 0
+    },
+    {
+      "endpoint": "GET /api/project/sale_items?sale_id=10",
+      "repeats": 30,
+      "avg_ms": 14.727,
+      "p95_ms": 30.325,
+      "min_ms": 6.95,
+      "max_ms": 33.554,
+      "errors": 0
+    },
+    {
+      "endpoint": "GET /api/member-portfolio",
+      "repeats": 30,
+      "avg_ms": 16.213,
+      "p95_ms": 30.703,
+      "min_ms": 6.592,
+      "max_ms": 32.98,
+      "errors": 0
+    },
+    {
+      "endpoint": "GET /api/admin/groups",
+      "repeats": 30,
+      "avg_ms": 14.178,
+      "p95_ms": 28.798,
+      "min_ms": 7.031,
+      "max_ms": 31.2,
+      "errors": 0
+    }
+  ],
+  "server_endpoint_stats": {
+    "count": 5,
+    "stats": [
+      {
+        "avg_ms": 0.34,
+        "endpoint": "GET /api/project/<table_name>",
+        "errors": 0,
+        "hits": 240,
+        "last_seen_at": "2026-03-22T01:29:02.225615",
+        "last_status": 200,
+        "max_ms": 3.791,
+        "slow_hits": 0
+      },
+      {
+        "avg_ms": 0.306,
+        "endpoint": "GET /api/project/<table_name>/<record_id>",
+        "errors": 0,
+        "hits": 30,
+        "last_seen_at": "2026-03-22T01:28:59.748560",
+        "last_status": 200,
+        "max_ms": 0.655,
+        "slow_hits": 0
+      },
+      {
+        "avg_ms": 0.772,
+        "endpoint": "GET /api/member-portfolio",
+        "errors": 0,
+        "hits": 30,
+        "last_seen_at": "2026-03-22T01:29:02.712758",
+        "last_status": 200,
+        "max_ms": 1.762,
+        "slow_hits": 0
+      },
+      {
+        "avg_ms": 0.559,
+        "endpoint": "GET /api/admin/groups",
+        "errors": 0,
+        "hits": 30,
+        "last_seen_at": "2026-03-22T01:29:03.139035",
+        "last_status": 200,
+        "max_ms": 1.001,
+        "slow_hits": 0
+      },
+      {
+        "avg_ms": 0.202,
+        "endpoint": "POST /api/admin/performance/reset-metrics",
+        "errors": 0,
+        "hits": 1,
+        "last_seen_at": "2026-03-22T01:28:58.496335",
+        "last_status": 200,
+        "max_ms": 0.202,
+        "slow_hits": 0
+      }
+    ]
+  },
+  "server_endpoint_insights": {
+    "most_accessed_endpoints": [
+      {
+        "avg_ms": 0.34033374540740624,
+        "endpoint": "GET /api/project/<table_name>",
+        "hits": 240,
+        "max_ms": 3.790999995544553
+      },
+      {
+        "avg_ms": 0.3058566595427692,
+        "endpoint": "GET /api/project/<table_name>/<record_id>",
+        "hits": 30,
+        "max_ms": 0.6545999785885215
+      },
+      {
+        "avg_ms": 0.7718266802839935,
+        "endpoint": "GET /api/member-portfolio",
+        "hits": 30,
+        "max_ms": 1.7622000304982066
+      },
+      {
+        "avg_ms": 0.5585399883178374,
+        "endpoint": "GET /api/admin/groups",
+        "hits": 30,
+        "max_ms": 1.0013999417424202
+      },
+      {
+        "avg_ms": 0.20190002396702766,
+        "endpoint": "POST /api/admin/performance/reset-metrics",
+        "hits": 1,
+        "max_ms": 0.20190002396702766
+      }
+    ],
+    "note": "Use these insights to prioritize index and query tuning.",
+    "slowest_avg_endpoints": [
+      {
+        "avg_ms": 0.7718266802839935,
+        "endpoint": "GET /api/member-portfolio",
+        "hits": 30,
+        "max_ms": 1.7622000304982066
+      },
+      {
+        "avg_ms": 0.5585399883178374,
+        "endpoint": "GET /api/admin/groups",
+        "hits": 30,
+        "max_ms": 1.0013999417424202
+      },
+      {
+        "avg_ms": 0.3456000704318285,
+        "endpoint": "GET /api/admin/performance/endpoint-stats",
+        "hits": 1,
+        "max_ms": 0.3456000704318285
+      },
+      {
+        "avg_ms": 0.34033374540740624,
+        "endpoint": "GET /api/project/<table_name>",
+        "hits": 240,
+        "max_ms": 3.790999995544553
+      },
+      {
+        "avg_ms": 0.3058566595427692,
+        "endpoint": "GET /api/project/<table_name>/<record_id>",
+        "hits": 30,
+        "max_ms": 0.6545999785885215
+      }
+    ],
+    "slowest_peak_endpoints": [
+      {
+        "avg_ms": 0.34033374540740624,
+        "endpoint": "GET /api/project/<table_name>",
+        "hits": 240,
+        "max_ms": 3.790999995544553
+      },
+      {
+        "avg_ms": 0.7718266802839935,
+        "endpoint": "GET /api/member-portfolio",
+        "hits": 30,
+        "max_ms": 1.7622000304982066
+      },
+      {
+        "avg_ms": 0.5585399883178374,
+        "endpoint": "GET /api/admin/groups",
+        "hits": 30,
+        "max_ms": 1.0013999417424202
+      },
+      {
+        "avg_ms": 0.3058566595427692,
+        "endpoint": "GET /api/project/<table_name>/<record_id>",
+        "hits": 30,
+        "max_ms": 0.6545999785885215
+      },
+      {
+        "avg_ms": 0.3456000704318285,
+        "endpoint": "GET /api/admin/performance/endpoint-stats",
+        "hits": 1,
+        "max_ms": 0.3456000704318285
+      }
+    ]
+  }
+}
