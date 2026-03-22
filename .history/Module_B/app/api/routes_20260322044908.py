@@ -45,6 +45,12 @@ ROLE_TABLE_ACCESS = {
     "customer": {"products", "categories", "sales", "payments"},
     "staff": {"products", "attendance", "categories", "customers", "sales", "sale_items", "payments"},
 }
+PREDEFINED_ACCOUNT_ROLES = {
+    "aarav": "admin",
+    "vivaan": "staff",
+    "vivan": "staff",
+    "customer1": "customer",
+}
 PUBLIC_ENDPOINTS = {
     "api.login",
     "api.login_legacy",
@@ -374,6 +380,15 @@ def _remove_member_from_project(member_id, project_id):
 def _seed_if_needed():
     members = member_manager.list_all_members()
     if members:
+        existing_usernames = {m.get("username") for m in members}
+        if "customer1" not in existing_usernames:
+            member_manager.create_member(
+                username="customer1",
+                email="customer1@example.com",
+                full_name="Portal Customer",
+                department="Customer",
+                password="Customer@123",
+            )
         return
 
     seed_members = [
@@ -409,6 +424,14 @@ def _seed_if_needed():
 
     for member in seed_members:
         member_manager.create_member(**member)
+
+    member_manager.create_member(
+        username="customer1",
+        email="customer1@example.com",
+        full_name="Portal Customer",
+        department="Customer",
+        password="Customer@123",
+    )
 
     groups = [
         ("admins", "System administrators"),
@@ -534,13 +557,24 @@ def _resolve_member_role(member_id, member_record=None):
 
 
 def _resolve_portal_role(member_id, member_record=None):
+    member_record = member_record or member_manager.get_member(member_id) or {}
+    username = str(member_record.get("username", "")).strip().lower()
+    predefined_role = PREDEFINED_ACCOUNT_ROLES.get(username)
+
+    if predefined_role == "admin":
+        return "member"
+    if predefined_role == "staff":
+        return "staff"
+    if predefined_role == "customer":
+        return "customer"
+
     if _is_admin(member_id):
-        return "admin"
+        return "member"
 
     internal_role = _resolve_member_role(member_id, member_record)
     if internal_role == "customer":
         return "customer"
-    return "shopkeeper"
+    return "staff"
 
 
 def _is_table_allowed(table_name, role_name):
@@ -713,8 +747,8 @@ def login():
     if not username or not password:
         return jsonify({"error": "username and password are required"}), 400
 
-    if portal_role and portal_role not in {"admin", "shopkeeper", "customer"}:
-        return jsonify({"error": "portal_role must be one of admin, shopkeeper, customer"}), 400
+    if portal_role and portal_role not in {"member", "staff", "customer"}:
+        return jsonify({"error": "portal_role must be one of member, staff, customer"}), 400
 
     member_before = _find_member_by_username(username)
     result = auth_manager.login(username=username, password=password)

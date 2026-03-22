@@ -212,29 +212,12 @@ def _audit_write(action, db_name, table_name, record_id, status, details):
     _insert_audit_table_entry(entry)
 
     if status == "success":
-        try:
-            _upsert_expected_state(
-                db_name,
-                table_name,
-                actor=f"{actor_username}:{actor_member_id}",
-                source_marker="session_validated_api",
-            )
-        except Exception as exc:
-            # Keep CRUD endpoints responsive even if audit-state refresh fails.
-            _append_file_audit(
-                {
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "action": "audit_state_sync_failed",
-                    "db": db_name,
-                    "table": table_name,
-                    "record_id": record_id,
-                    "status": "failed",
-                    "details": str(exc),
-                    "actor_member_id": actor_member_id,
-                    "actor_username": actor_username,
-                    "source": "session_validated_api",
-                }
-            )
+        _upsert_expected_state(
+            db_name,
+            table_name,
+            actor=f"{actor_username}:{actor_member_id}",
+            source_marker="session_validated_api",
+        )
 
 
 def _admin_forbidden_response():
@@ -695,11 +678,6 @@ def _fallback_create_record(table_name, payload):
     if id_field and not isinstance(record.get(id_field), int):
         record[id_field] = _next_id(table)
 
-    if id_field and isinstance(record.get(id_field), int):
-        existing = table.get(record[id_field])
-        if existing is not None:
-            return None, f"Record with id '{record[id_field]}' already exists"
-
     table.insert(record)
     record_id = record.get(id_field) if id_field else _next_id(table) - 1
     return int(record_id) if isinstance(record_id, int) else None, "OK"
@@ -1091,8 +1069,6 @@ def create_project_record(table_name):
 
         created_id, fallback_message = _fallback_create_record(table_name, payload)
         if fallback_message != "OK":
-            if "already exists" in fallback_message.lower():
-                return jsonify({"error": fallback_message}), 400
             return jsonify({"error": f"SQL backend unavailable: {status}", "fallback_error": fallback_message}), 503
         _audit_write("create", PROJECT_DB, table_name, created_id if isinstance(created_id, int) else -1, "success", "Record created (fallback)")
         return jsonify({"message": "Record created", "id": created_id, "backend": "bplustree_fallback"}), 201
@@ -1334,9 +1310,6 @@ def update_member(member_id):
     if not (g.is_admin or g.current_member_id == member_id):
         return jsonify({"error": "Permission denied"}), 403
 
-    if not g.is_admin and getattr(g, "role_name", "staff") == "customer":
-        return jsonify({"error": "Customers cannot update portfolio"}), 403
-
     if not g.is_admin:
         allowed_fields = _allowed_self_portfolio_fields()
         payload = {key: value for key, value in payload.items() if key in allowed_fields}
@@ -1413,9 +1386,6 @@ def remove_member_from_project(project_id, member_id):
 
 @api.route("/member-portfolio/me", methods=["PUT"])
 def update_own_portfolio():
-    if getattr(g, "role_name", "staff") == "customer":
-        return jsonify({"error": "Customers cannot update portfolio"}), 403
-
     payload = request.get_json(silent=True) or {}
     allowed_fields = _allowed_self_portfolio_fields()
     updates = {key: value for key, value in payload.items() if key in allowed_fields}

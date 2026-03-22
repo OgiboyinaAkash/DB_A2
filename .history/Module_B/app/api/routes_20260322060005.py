@@ -45,6 +45,12 @@ ROLE_TABLE_ACCESS = {
     "customer": {"products", "categories", "sales", "payments"},
     "staff": {"products", "attendance", "categories", "customers", "sales", "sale_items", "payments"},
 }
+PREDEFINED_ACCOUNT_ROLES = {
+    "aarav": "admin",
+    "vivaan": "staff",
+    "vivan": "staff",
+    "customer1": "customer",
+}
 PUBLIC_ENDPOINTS = {
     "api.login",
     "api.login_legacy",
@@ -206,12 +212,29 @@ def _audit_write(action, db_name, table_name, record_id, status, details):
     _insert_audit_table_entry(entry)
 
     if status == "success":
-        _upsert_expected_state(
-            db_name,
-            table_name,
-            actor=f"{actor_username}:{actor_member_id}",
-            source_marker="session_validated_api",
-        )
+        try:
+            _upsert_expected_state(
+                db_name,
+                table_name,
+                actor=f"{actor_username}:{actor_member_id}",
+                source_marker="session_validated_api",
+            )
+        except Exception as exc:
+            # Keep CRUD endpoints responsive even if audit-state refresh fails.
+            _append_file_audit(
+                {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "action": "audit_state_sync_failed",
+                    "db": db_name,
+                    "table": table_name,
+                    "record_id": record_id,
+                    "status": "failed",
+                    "details": str(exc),
+                    "actor_member_id": actor_member_id,
+                    "actor_username": actor_username,
+                    "source": "session_validated_api",
+                }
+            )
 
 
 def _admin_forbidden_response():
@@ -551,13 +574,24 @@ def _resolve_member_role(member_id, member_record=None):
 
 
 def _resolve_portal_role(member_id, member_record=None):
+    member_record = member_record or member_manager.get_member(member_id) or {}
+    username = str(member_record.get("username", "")).strip().lower()
+    predefined_role = PREDEFINED_ACCOUNT_ROLES.get(username)
+
+    if predefined_role == "admin":
+        return "member"
+    if predefined_role == "staff":
+        return "staff"
+    if predefined_role == "customer":
+        return "customer"
+
     if _is_admin(member_id):
-        return "admin"
+        return "member"
 
     internal_role = _resolve_member_role(member_id, member_record)
     if internal_role == "customer":
         return "customer"
-    return "shopkeeper"
+    return "staff"
 
 
 def _is_table_allowed(table_name, role_name):
@@ -619,6 +653,84 @@ def _get_project_table_name(table_name):
 
 def _coerce_record_id(record_id):
     return int(record_id)
+
+
+FALLBACK_ID_FIELDS = {
+    "products": "product_id",
+    "categories": "category_id",
+    "customers": "customer_id",
+    "sales": "sale_id",
+    "sale_items": "sale_item_id",
+}
+
+
+def _fallback_table(table_name):
+    if table_name == "members":
+        return db_manager.get_table(CORE_DB, "members")
+    return db_manager.get_table(PROJECT_DB, table_name)
+
+
+def _fallback_list_records(table_name):
+    table, message = _fallback_table(table_name)
+    if table is None:
+        return None, message
+    records = [{"id": record_id, "data": record_data} for record_id, record_data in table.get_all()]
+    return records, "OK"
+
+
+def _fallback_get_record(table_name, normalized_id):
+    table, message = _fallback_table(table_name)
+    if table is None:
+        return None, message
+    return table.get(normalized_id), "OK"
+
+
+def _fallback_create_record(table_name, payload):
+    table, message = _fallback_table(table_name)
+    if table is None:
+        return None, message
+
+    record = dict(payload)
+    id_field = FALLBACK_ID_FIELDS.get(table_name)
+    if id_field and not isinstance(record.get(id_field), int):
+        record[id_field] = _next_id(table)
+
+    if id_field and isinstance(record.get(id_field), int):
+        existing = table.get(record[id_field])
+        if existing is not None:
+            return None, f"Record with id '{record[id_field]}' already exists"
+
+    table.insert(record)
+    record_id = record.get(id_field) if id_field else _next_id(table) - 1
+    return int(record_id) if isinstance(record_id, int) else None, "OK"
+
+
+def _fallback_update_record(table_name, normalized_id, payload):
+    table, message = _fallback_table(table_name)
+    if table is None:
+        return None, message
+
+    current = table.get(normalized_id)
+    if not current:
+        return False, "Record not found"
+
+    updated = current.copy()
+    updated.update(payload)
+    table.update(normalized_id, updated)
+    return True, "OK"
+
+
+def _fallback_delete_record(table_name, normalized_id):
+    table, message = _fallback_table(table_name)
+    if table is None:
+        return None, message
+
+    current = table.get(normalized_id)
+    if not current:
+        return False, "Record not found"
+
+    table.delete(normalized_id)
+    return True, "OK"
 
 
 def _build_sql_filters_and_order(table_name):
@@ -730,8 +842,8 @@ def login():
     if not username or not password:
         return jsonify({"error": "username and password are required"}), 400
 
-    if portal_role and portal_role not in {"admin", "shopkeeper", "customer"}:
-        return jsonify({"error": "portal_role must be one of admin, shopkeeper, customer"}), 400
+    if portal_role and portal_role not in {"member", "staff", "customer"}:
+        return jsonify({"error": "portal_role must be one of member, staff, customer"}), 400
 
     member_before = _find_member_by_username(username)
     result = auth_manager.login(username=username, password=password)
@@ -857,7 +969,10 @@ def list_project_records(table_name):
 
     ok, status = _ensure_sql_backend()
     if not ok:
-        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
+        records, fallback_message = _fallback_list_records(table_name)
+        if records is None:
+            return jsonify({"error": f"SQL backend unavailable: {status}", "fallback_error": fallback_message}), 503
+        return jsonify({"table": table_name, "records": records, "count": len(records), "backend": "bplustree_fallback"})
 
     filters, order_by = _build_sql_filters_and_order(table_name)
     try:
@@ -906,7 +1021,12 @@ def get_project_record(table_name, record_id):
 
     ok, status = _ensure_sql_backend()
     if not ok:
-        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
+        record, fallback_message = _fallback_get_record(table_name, normalized_id)
+        if fallback_message != "OK":
+            return jsonify({"error": f"SQL backend unavailable: {status}", "fallback_error": fallback_message}), 503
+        if record is None:
+            return jsonify({"error": "Record not found"}), 404
+        return jsonify({"id": normalized_id, "data": record, "backend": "bplustree_fallback"})
 
     record = sql_project_store.get_record(table_name, normalized_id)
     if record is None:
@@ -959,7 +1079,21 @@ def create_project_record(table_name):
 
     ok, status = _ensure_sql_backend()
     if not ok:
-        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
+        if isinstance(payload, list):
+            results = []
+            for record in payload:
+                created_id, fallback_message = _fallback_create_record(table_name, record)
+                if fallback_message != "OK":
+                    results.append({"status": "failed", "error": fallback_message})
+                else:
+                    results.append({"status": "success", "id": created_id})
+            return jsonify({"message": "Bulk insert processed", "results": results, "backend": "bplustree_fallback"}), 201
+
+        created_id, fallback_message = _fallback_create_record(table_name, payload)
+        if fallback_message != "OK":
+            return jsonify({"error": f"SQL backend unavailable: {status}", "fallback_error": fallback_message}), 503
+        _audit_write("create", PROJECT_DB, table_name, created_id if isinstance(created_id, int) else -1, "success", "Record created (fallback)")
+        return jsonify({"message": "Record created", "id": created_id, "backend": "bplustree_fallback"}), 201
 
     if isinstance(payload, list):
         results = []
@@ -1024,7 +1158,13 @@ def update_project_record(table_name, record_id):
 
     ok, status = _ensure_sql_backend()
     if not ok:
-        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
+        updated, fallback_message = _fallback_update_record(table_name, normalized_id, payload)
+        if fallback_message != "OK":
+            if fallback_message == "Record not found":
+                return jsonify({"error": "Record not found"}), 404
+            return jsonify({"error": f"SQL backend unavailable: {status}", "fallback_error": fallback_message}), 503
+        _audit_write("update", PROJECT_DB, table_name, normalized_id, "success", "Record updated (fallback)")
+        return jsonify({"message": f"Record '{normalized_id}' updated successfully", "backend": "bplustree_fallback"})
 
     try:
         updated = sql_project_store.update_record(table_name, normalized_id, payload)
@@ -1078,7 +1218,13 @@ def delete_project_record(table_name, record_id):
 
     ok, status = _ensure_sql_backend()
     if not ok:
-        return jsonify({"error": f"SQL backend unavailable: {status}"}), 503
+        deleted, fallback_message = _fallback_delete_record(table_name, normalized_id)
+        if fallback_message != "OK":
+            if fallback_message == "Record not found":
+                return jsonify({"error": "Record not found"}), 404
+            return jsonify({"error": f"SQL backend unavailable: {status}", "fallback_error": fallback_message}), 503
+        _audit_write("delete", PROJECT_DB, table_name, normalized_id, "success", "Record deleted (fallback)")
+        return jsonify({"message": f"Record '{normalized_id}' deleted successfully", "backend": "bplustree_fallback"})
 
     try:
         deleted = sql_project_store.delete_record(table_name, normalized_id)
@@ -1186,6 +1332,9 @@ def update_member(member_id):
     if not (g.is_admin or g.current_member_id == member_id):
         return jsonify({"error": "Permission denied"}), 403
 
+    if not g.is_admin and getattr(g, "role_name", "staff") == "customer":
+        return jsonify({"error": "Customers cannot update portfolio"}), 403
+
     if not g.is_admin:
         allowed_fields = _allowed_self_portfolio_fields()
         payload = {key: value for key, value in payload.items() if key in allowed_fields}
@@ -1262,6 +1411,9 @@ def remove_member_from_project(project_id, member_id):
 
 @api.route("/member-portfolio/me", methods=["PUT"])
 def update_own_portfolio():
+    if getattr(g, "role_name", "staff") == "customer":
+        return jsonify({"error": "Customers cannot update portfolio"}), 403
+
     payload = request.get_json(silent=True) or {}
     allowed_fields = _allowed_self_portfolio_fields()
     updates = {key: value for key, value in payload.items() if key in allowed_fields}

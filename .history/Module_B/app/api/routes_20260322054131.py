@@ -695,11 +695,6 @@ def _fallback_create_record(table_name, payload):
     if id_field and not isinstance(record.get(id_field), int):
         record[id_field] = _next_id(table)
 
-    if id_field and isinstance(record.get(id_field), int):
-        existing = table.get(record[id_field])
-        if existing is not None:
-            return None, f"Record with id '{record[id_field]}' already exists"
-
     table.insert(record)
     record_id = record.get(id_field) if id_field else _next_id(table) - 1
     return int(record_id) if isinstance(record_id, int) else None, "OK"
@@ -1091,8 +1086,6 @@ def create_project_record(table_name):
 
         created_id, fallback_message = _fallback_create_record(table_name, payload)
         if fallback_message != "OK":
-            if "already exists" in fallback_message.lower():
-                return jsonify({"error": fallback_message}), 400
             return jsonify({"error": f"SQL backend unavailable: {status}", "fallback_error": fallback_message}), 503
         _audit_write("create", PROJECT_DB, table_name, created_id if isinstance(created_id, int) else -1, "success", "Record created (fallback)")
         return jsonify({"message": "Record created", "id": created_id, "backend": "bplustree_fallback"}), 201

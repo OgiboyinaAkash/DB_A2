@@ -26,25 +26,13 @@ const SQL_TABLES_EXTRACTED = [
 ];
 
 const TABLES_BY_ROLE = {
-  admin: SQL_TABLES_EXTRACTED,
-  shopkeeper: ["products", "attendance", "categories", "customers", "sales", "sale_items", "payments"],
+  member: SQL_TABLES_EXTRACTED,
+  staff: ["products", "attendance", "categories", "customers", "sales", "sale_items", "payments"],
   customer: ["products", "categories", "sales", "payments"],
-};
-
-const ROLE_LOGIN_MAP = {
-  admin: { username: "aarav", label: "Admin" },
-  shopkeeper: { username: "vivaan", label: "Shopkeeper" },
-  customer: { username: "customer1", label: "Customer" },
 };
 
 function roleSelectEl() {
   return document.getElementById("portalRole");
-}
-
-function syncUsernameByRole() {
-  const selectedRole = roleSelectEl().value;
-  const mapping = ROLE_LOGIN_MAP[selectedRole] || ROLE_LOGIN_MAP.admin;
-  document.getElementById("username").value = mapping.username;
 }
 
 function tableSelectEl() {
@@ -74,8 +62,6 @@ function applyTableVisibility() {
 }
 
 const controlsToToggle = [
-  "meButton",
-  "logoutButton",
   "listBtn",
   "getBtn",
   "portfolioListBtn",
@@ -114,10 +100,15 @@ function applyRolePermissions() {
     document.getElementById(id).disabled = !isAdminUser;
   });
   applyTableVisibility();
-  roleBadge.textContent = `Role: ${currentRole}`;
+  if (roleBadge) {
+    roleBadge.textContent = `Role: ${currentRole}`;
+  }
 }
 
 function setOutput(el, data) {
+  if (!el) {
+    return;
+  }
   el.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
 }
 
@@ -169,7 +160,7 @@ async function authenticate(username, password, selectedPortalRole) {
   const me = await apiCall("/api/auth/me");
   currentRole = me.portal_role || result.portal_role || selectedPortalRole;
   currentInternalRole = me.role || result.role || "staff";
-  isAdminUser = currentRole === "admin";
+  isAdminUser = Boolean(me.is_admin);
   applyRolePermissions();
   setOutput(authStatus, formatWhoAmI(me, sessionToken));
   return { login: result, me };
@@ -182,11 +173,15 @@ function resetAuthState(messageText) {
   isAdminUser = false;
   currentRole = "guest";
   currentInternalRole = "staff";
-  roleBadge.textContent = "";
+  if (roleBadge) {
+    roleBadge.textContent = "";
+  }
   if (messageText) {
     setOutput(authStatus, messageText);
   } else {
-    authStatus.textContent = "";
+    if (authStatus) {
+      authStatus.textContent = "";
+    }
   }
 }
 
@@ -219,7 +214,7 @@ document.getElementById("meButton").addEventListener("click", async () => {
     const result = await apiCall("/api/auth/me");
     currentRole = result.portal_role || currentRole;
     currentInternalRole = result.role || currentInternalRole;
-    isAdminUser = currentRole === "admin";
+    isAdminUser = Boolean(result.is_admin);
     applyRolePermissions();
     setOutput(authStatus, formatWhoAmI(result, sessionToken));
   } catch (error) {
@@ -413,11 +408,13 @@ document.getElementById("adminUnauthorizedCheckBtn").addEventListener("click", a
 });
 
 setAuthenticated(false);
-roleSelectEl().addEventListener("change", syncUsernameByRole);
-syncUsernameByRole();
 applyRolePermissions();
-roleBadge.textContent = "";
-authStatus.textContent = "";
+if (roleBadge) {
+  roleBadge.textContent = "";
+}
+if (authStatus) {
+  authStatus.textContent = "";
+}
 setOutput(crudOutput, "Login first to use CRUD endpoints.");
 setOutput(portfolioOutput, "Login first to view member portfolio.");
 setOutput(adminOutput, "Admin actions require admin role.");

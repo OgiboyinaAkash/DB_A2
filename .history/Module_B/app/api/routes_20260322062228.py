@@ -655,6 +655,22 @@ def _coerce_record_id(record_id):
     return int(record_id)
 
 
+TABLE_API_ID_FIELD = {
+    "members": "member_id",
+    "staff": "staff_id",
+    "products": "product_id",
+    "categories": "category_id",
+    "customers": "customer_id",
+    "suppliers": "supplier_id",
+    "purchase_orders": "poid",
+    "purchase_order_items": "po_item_id",
+    "sales": "sale_id",
+    "sale_items": "sale_item_id",
+    "payments": "payment_id",
+    "attendance": "attendance_id",
+}
+
+
 FALLBACK_ID_FIELDS = {
     "products": "product_id",
     "categories": "category_id",
@@ -731,6 +747,13 @@ def _fallback_delete_record(table_name, normalized_id):
 
     table.delete(normalized_id)
     return True, "OK"
+
+
+def _first_payload_mismatch(existing_record, payload):
+    for key, value in payload.items():
+        if key in existing_record and existing_record.get(key) != value:
+            return key
+    return None
 
 
 def _build_sql_filters_and_order(table_name):
@@ -1054,25 +1077,49 @@ def create_project_record(table_name):
 
     if table_name == CORE_PROJECT_TABLE:
         table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
-        project_id = payload.get("project_id") if isinstance(payload.get("project_id"), int) else _next_table_id(CORE_PROJECT_TABLE, "project_id")
+        requested_project_id = payload.get("project_id") if isinstance(payload.get("project_id"), int) else None
+        existing_record_id = None
+        existing_record = None
+
+        if requested_project_id is not None:
+            existing_record = table.get(requested_project_id)
+            if existing_record is not None:
+                existing_record_id = requested_project_id
+
         all_projects = table.get_all()
         for _, row in all_projects:
-            if row.get("project_id") == project_id:
-                return jsonify({"error": f"Project {project_id} already exists"}), 400
-            if row.get("project_name") == payload.get("project_name"):
-                return jsonify({"error": "Project name already exists"}), 400
+            if existing_record_id is None and row.get("project_name") == payload.get("project_name"):
+                existing_record_id = row.get("project_id")
+                existing_record = row
+                break
 
         now = datetime.utcnow().isoformat()
+        project_name = str(payload.get("project_name", "")).strip()
+        if not project_name and existing_record is None:
+            return jsonify({"error": "project_name is required"}), 400
+
+        if existing_record is not None and isinstance(existing_record_id, int):
+            updated = existing_record.copy()
+            if project_name:
+                updated["project_name"] = project_name
+            if "description" in payload:
+                updated["description"] = payload.get("description")
+            if "status" in payload:
+                updated["status"] = payload.get("status")
+            updated["updated_at"] = now
+            table.update(existing_record_id, updated)
+            _audit_write("update", CORE_DB, CORE_PROJECT_TABLE, existing_record_id, "success", "Project updated via create")
+            return jsonify({"message": "Record updated", "id": existing_record_id}), 200
+
+        project_id = requested_project_id if requested_project_id is not None else _next_table_id(CORE_PROJECT_TABLE, "project_id")
         record = {
             "project_id": project_id,
-            "project_name": payload.get("project_name", "").strip(),
+            "project_name": project_name,
             "description": payload.get("description", ""),
             "status": payload.get("status", "active"),
             "created_at": payload.get("created_at", now),
             "updated_at": now,
         }
-        if not record["project_name"]:
-            return jsonify({"error": "project_name is required"}), 400
         table.insert(record)
         _audit_write("create", CORE_DB, CORE_PROJECT_TABLE, project_id, "success", "Project created")
         return jsonify({"message": "Record created", "id": project_id}), 201
@@ -1088,6 +1135,16 @@ def create_project_record(table_name):
                 else:
                     results.append({"status": "success", "id": created_id})
             return jsonify({"message": "Bulk insert processed", "results": results, "backend": "bplustree_fallback"}), 201
+
+        id_field = TABLE_API_ID_FIELD.get(table_name)
+        requested_id = payload.get(id_field) if id_field else None
+        if isinstance(requested_id, int):
+            existing_record, fallback_message = _fallback_get_record(table_name, requested_id)
+            if fallback_message == "OK" and existing_record is not None:
+                updated, update_message = _fallback_update_record(table_name, requested_id, payload)
+                if updated:
+                    _audit_write("update", PROJECT_DB, table_name, requested_id, "success", "Record updated via create (fallback)")
+                    return jsonify({"message": "Record updated", "id": requested_id, "backend": "bplustree_fallback"}), 200
 
         created_id, fallback_message = _fallback_create_record(table_name, payload)
         if fallback_message != "OK":
@@ -1109,6 +1166,20 @@ def create_project_record(table_name):
                 results.append({"status": "failed", "error": error_text})
                 _audit_write("create", PROJECT_DB, table_name, -1, "failed", error_text)
         return jsonify({"message": "Bulk insert processed", "results": results}), 201
+
+    id_field = TABLE_API_ID_FIELD.get(table_name)
+    requested_id = payload.get(id_field) if id_field else None
+    if isinstance(requested_id, int):
+        try:
+            existing_record = sql_project_store.get_record(table_name, requested_id)
+            if existing_record is not None:
+                updated = sql_project_store.update_record(table_name, requested_id, payload)
+                if updated:
+                    _audit_write("update", PROJECT_DB, table_name, requested_id, "success", "Record updated via create")
+                    return jsonify({"message": "Record updated", "id": requested_id}), 200
+        except Exception as exc:
+            _audit_write("update", PROJECT_DB, table_name, requested_id, "failed", str(exc))
+            return jsonify({"error": str(exc)}), 400
 
     try:
         result = sql_project_store.create_record(table_name, payload)
@@ -1201,12 +1272,18 @@ def delete_project_record(table_name, record_id):
     except ValueError:
         return jsonify({"error": "Invalid record id type"}), 400
 
+    payload = request.get_json(silent=True) or {}
+
     if table_name == CORE_PROJECT_TABLE:
         table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
         current = table.get(normalized_id)
         if not current:
             _audit_write("delete", CORE_DB, CORE_PROJECT_TABLE, normalized_id, "failed", "Record not found")
             return jsonify({"error": "Record not found"}), 404
+
+        mismatch_field = _first_payload_mismatch(current, payload)
+        if mismatch_field:
+            return jsonify({"error": f"Payload mismatch for field '{mismatch_field}'"}), 400
 
         mapping_table, _ = db_manager.get_table(CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE)
         all_maps = mapping_table.get_all()
@@ -1220,6 +1297,16 @@ def delete_project_record(table_name, record_id):
 
     ok, status = _ensure_sql_backend()
     if not ok:
+        current_record, fallback_lookup_message = _fallback_get_record(table_name, normalized_id)
+        if fallback_lookup_message != "OK":
+            return jsonify({"error": f"SQL backend unavailable: {status}", "fallback_error": fallback_lookup_message}), 503
+        if current_record is None:
+            return jsonify({"error": "Record not found"}), 404
+
+        mismatch_field = _first_payload_mismatch(current_record, payload)
+        if mismatch_field:
+            return jsonify({"error": f"Payload mismatch for field '{mismatch_field}'"}), 400
+
         deleted, fallback_message = _fallback_delete_record(table_name, normalized_id)
         if fallback_message != "OK":
             if fallback_message == "Record not found":
@@ -1229,6 +1316,15 @@ def delete_project_record(table_name, record_id):
         return jsonify({"message": f"Record '{normalized_id}' deleted successfully", "backend": "bplustree_fallback"})
 
     try:
+        current_record = sql_project_store.get_record(table_name, normalized_id)
+        if current_record is None:
+            _audit_write("delete", PROJECT_DB, table_name, normalized_id, "failed", "Record not found")
+            return jsonify({"error": "Record not found"}), 404
+
+        mismatch_field = _first_payload_mismatch(current_record, payload)
+        if mismatch_field:
+            return jsonify({"error": f"Payload mismatch for field '{mismatch_field}'"}), 400
+
         deleted = sql_project_store.delete_record(table_name, normalized_id)
     except Exception as exc:
         _audit_write("delete", PROJECT_DB, table_name, normalized_id, "failed", str(exc))

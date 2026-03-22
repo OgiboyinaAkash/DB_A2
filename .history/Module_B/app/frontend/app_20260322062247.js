@@ -294,9 +294,13 @@ document.getElementById("deleteBtn").addEventListener("click", async () => {
   }
 
   try {
-    const result = await apiCall(`/api/project/${tableName()}/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
+    const options = { method: "DELETE" };
+    const rawPayload = document.getElementById("payloadInput").value.trim();
+    if (rawPayload) {
+      const payload = JSON.parse(rawPayload);
+      options.body = JSON.stringify(payload);
+    }
+    const result = await apiCall(`/api/project/${tableName()}/${encodeURIComponent(id)}`, options);
     setOutput(crudOutput, result);
   } catch (error) {
     setOutput(crudOutput, `Delete failed: ${error.message}`);

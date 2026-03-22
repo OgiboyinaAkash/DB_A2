@@ -101,8 +101,6 @@ function applyRolePermissions() {
   adminOnlyControls.forEach((id) => {
     document.getElementById(id).disabled = !isAdminUser;
   });
-  const canUpdateSelfPortfolio = Boolean(sessionToken) && currentRole !== "customer";
-  document.getElementById("updateSelfPortfolioBtn").disabled = !canUpdateSelfPortfolio;
   applyTableVisibility();
   roleBadge.textContent = `Role: ${currentRole}`;
 }

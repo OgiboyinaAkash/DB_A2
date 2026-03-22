@@ -45,6 +45,7 @@ ROLE_TABLE_ACCESS = {
     "customer": {"products", "categories", "sales", "payments"},
     "staff": {"products", "attendance", "categories", "customers", "sales", "sale_items", "payments"},
 }
+FALLBACK_AVAILABLE_TABLES = {"members", "products", "categories", "customers", "sales", "sale_items", CORE_PROJECT_TABLE}
 PREDEFINED_ACCOUNT_ROLES = {
     "aarav": "admin",
     "vivaan": "staff",
@@ -212,29 +213,12 @@ def _audit_write(action, db_name, table_name, record_id, status, details):
     _insert_audit_table_entry(entry)
 
     if status == "success":
-        try:
-            _upsert_expected_state(
-                db_name,
-                table_name,
-                actor=f"{actor_username}:{actor_member_id}",
-                source_marker="session_validated_api",
-            )
-        except Exception as exc:
-            # Keep CRUD endpoints responsive even if audit-state refresh fails.
-            _append_file_audit(
-                {
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "action": "audit_state_sync_failed",
-                    "db": db_name,
-                    "table": table_name,
-                    "record_id": record_id,
-                    "status": "failed",
-                    "details": str(exc),
-                    "actor_member_id": actor_member_id,
-                    "actor_username": actor_username,
-                    "source": "session_validated_api",
-                }
-            )
+        _upsert_expected_state(
+            db_name,
+            table_name,
+            actor=f"{actor_username}:{actor_member_id}",
+            source_marker="session_validated_api",
+        )
 
 
 def _admin_forbidden_response():
@@ -595,20 +579,28 @@ def _resolve_portal_role(member_id, member_record=None):
 
 
 def _is_table_allowed(table_name, role_name):
-    allowed = ROLE_TABLE_ACCESS.get(role_name, set())
+    allowed = _effective_allowed_tables(role_name)
     return table_name in allowed
+
+
+def _effective_allowed_tables(role_name):
+    base_allowed = set(ROLE_TABLE_ACCESS.get(role_name, set()))
+    if SQL_AVAILABLE:
+        return base_allowed
+    return base_allowed.intersection(FALLBACK_AVAILABLE_TABLES)
 
 
 def _table_forbidden_response(table_name):
     role_name = getattr(g, "role_name", "staff")
     if _is_table_allowed(table_name, role_name):
         return None
+    allowed_tables = sorted(_effective_allowed_tables(role_name))
     return (
         jsonify(
             {
                 "error": f"Role '{role_name}' cannot access table '{table_name}'",
                 "role": role_name,
-                "allowed_tables": sorted(ROLE_TABLE_ACCESS.get(role_name, set())),
+                "allowed_tables": allowed_tables,
             }
         ),
         403,
@@ -694,11 +686,6 @@ def _fallback_create_record(table_name, payload):
     id_field = FALLBACK_ID_FIELDS.get(table_name)
     if id_field and not isinstance(record.get(id_field), int):
         record[id_field] = _next_id(table)
-
-    if id_field and isinstance(record.get(id_field), int):
-        existing = table.get(record[id_field])
-        if existing is not None:
-            return None, f"Record with id '{record[id_field]}' already exists"
 
     table.insert(record)
     record_id = record.get(id_field) if id_field else _next_id(table) - 1
@@ -882,6 +869,7 @@ def login():
         )
 
     resolved_internal_role = _resolve_member_role(result["member_id"], member)
+    effective_allowed_tables = sorted(_effective_allowed_tables(resolved_internal_role))
     return jsonify(
         {
             "message": result.get("message", "Login successful"),
@@ -889,7 +877,7 @@ def login():
             "member": member,
             "role": resolved_internal_role,
             "portal_role": resolved_portal_role,
-            "allowed_tables": sorted(ROLE_TABLE_ACCESS.get(resolved_internal_role, set())),
+            "allowed_tables": effective_allowed_tables,
         }
     )
 
@@ -910,13 +898,14 @@ def logout():
 
 @api.route("/auth/me", methods=["GET"])
 def auth_me():
+    effective_allowed_tables = sorted(_effective_allowed_tables(g.role_name))
     return jsonify(
         {
             "member": g.current_member,
             "is_admin": g.is_admin,
             "role": g.role_name,
             "portal_role": g.portal_role,
-            "allowed_tables": sorted(ROLE_TABLE_ACCESS.get(g.role_name, set())),
+            "allowed_tables": effective_allowed_tables,
             "groups": _member_groups(g.current_member_id),
         }
     )
@@ -1091,8 +1080,6 @@ def create_project_record(table_name):
 
         created_id, fallback_message = _fallback_create_record(table_name, payload)
         if fallback_message != "OK":
-            if "already exists" in fallback_message.lower():
-                return jsonify({"error": fallback_message}), 400
             return jsonify({"error": f"SQL backend unavailable: {status}", "fallback_error": fallback_message}), 503
         _audit_write("create", PROJECT_DB, table_name, created_id if isinstance(created_id, int) else -1, "success", "Record created (fallback)")
         return jsonify({"message": "Record created", "id": created_id, "backend": "bplustree_fallback"}), 201

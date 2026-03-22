@@ -8,6 +8,7 @@ let sessionToken = "";
 let isAdminUser = false;
 let currentRole = "guest";
 let currentInternalRole = "staff";
+let currentAllowedTables = [];
 
 const SQL_TABLES_EXTRACTED = [
   "members",
@@ -57,7 +58,9 @@ function renderTableOptions(tableNames) {
 }
 
 function applyTableVisibility() {
-  const allowedTables = TABLES_BY_ROLE[currentRole] || [];
+  const allowedTables = currentAllowedTables.length
+    ? currentAllowedTables
+    : (TABLES_BY_ROLE[currentRole] || []);
   renderTableOptions(allowedTables);
 }
 
@@ -159,6 +162,7 @@ async function authenticate(username, password, selectedPortalRole) {
   const me = await apiCall("/api/auth/me");
   currentRole = me.portal_role || result.portal_role || selectedPortalRole;
   currentInternalRole = me.role || result.role || "staff";
+  currentAllowedTables = Array.isArray(me.allowed_tables) ? me.allowed_tables : [];
   isAdminUser = Boolean(me.is_admin);
   applyRolePermissions();
   setOutput(authStatus, formatWhoAmI(me, sessionToken));
@@ -172,6 +176,7 @@ function resetAuthState(messageText) {
   isAdminUser = false;
   currentRole = "guest";
   currentInternalRole = "staff";
+  currentAllowedTables = [];
   roleBadge.textContent = "";
   if (messageText) {
     setOutput(authStatus, messageText);
@@ -209,6 +214,7 @@ document.getElementById("meButton").addEventListener("click", async () => {
     const result = await apiCall("/api/auth/me");
     currentRole = result.portal_role || currentRole;
     currentInternalRole = result.role || currentInternalRole;
+    currentAllowedTables = Array.isArray(result.allowed_tables) ? result.allowed_tables : [];
     isAdminUser = Boolean(result.is_admin);
     applyRolePermissions();
     setOutput(authStatus, formatWhoAmI(result, sessionToken));

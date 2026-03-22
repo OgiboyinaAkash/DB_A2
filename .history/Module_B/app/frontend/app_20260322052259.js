@@ -26,25 +26,14 @@ const SQL_TABLES_EXTRACTED = [
 ];
 
 const TABLES_BY_ROLE = {
-  admin: SQL_TABLES_EXTRACTED,
-  shopkeeper: ["products", "attendance", "categories", "customers", "sales", "sale_items", "payments"],
+  member: SQL_TABLES_EXTRACTED,
+  staff: ["products", "attendance", "categories", "customers", "sales", "sale_items", "payments"],
   customer: ["products", "categories", "sales", "payments"],
-};
-
-const ROLE_LOGIN_MAP = {
-  admin: { username: "aarav", label: "Admin" },
-  shopkeeper: { username: "vivaan", label: "Shopkeeper" },
-  customer: { username: "customer1", label: "Customer" },
 };
 
 function roleSelectEl() {
   return document.getElementById("portalRole");
 }
-
-function syncUsernameByRole() {
-  const selectedRole = roleSelectEl().value;
-  const mapping = ROLE_LOGIN_MAP[selectedRole] || ROLE_LOGIN_MAP.admin;
-  document.getElementById("username").value = mapping.username;
 
 function tableSelectEl() {
   return document.getElementById("tableSelect");
@@ -112,6 +101,8 @@ function applyRolePermissions() {
   adminOnlyControls.forEach((id) => {
     document.getElementById(id).disabled = !isAdminUser;
   });
+  const canUpdateSelfPortfolio = currentRole !== "customer";
+  document.getElementById("updateSelfPortfolioBtn").disabled = !canUpdateSelfPortfolio;
   applyTableVisibility();
   roleBadge.textContent = `Role: ${currentRole}`;
 }
@@ -168,7 +159,7 @@ async function authenticate(username, password, selectedPortalRole) {
   const me = await apiCall("/api/auth/me");
   currentRole = me.portal_role || result.portal_role || selectedPortalRole;
   currentInternalRole = me.role || result.role || "staff";
-  isAdminUser = currentRole === "admin";
+  isAdminUser = Boolean(me.is_admin);
   applyRolePermissions();
   setOutput(authStatus, formatWhoAmI(me, sessionToken));
   return { login: result, me };
@@ -218,7 +209,7 @@ document.getElementById("meButton").addEventListener("click", async () => {
     const result = await apiCall("/api/auth/me");
     currentRole = result.portal_role || currentRole;
     currentInternalRole = result.role || currentInternalRole;
-    isAdminUser = currentRole === "admin";
+    isAdminUser = Boolean(result.is_admin);
     applyRolePermissions();
     setOutput(authStatus, formatWhoAmI(result, sessionToken));
   } catch (error) {
@@ -412,8 +403,6 @@ document.getElementById("adminUnauthorizedCheckBtn").addEventListener("click", a
 });
 
 setAuthenticated(false);
-roleSelectEl().addEventListener("change", syncUsernameByRole);
-syncUsernameByRole();
 applyRolePermissions();
 roleBadge.textContent = "";
 authStatus.textContent = "";
