@@ -31,6 +31,108 @@ const TABLES_BY_ROLE = {
   customer: ["products", "categories", "sales", "payments"],
 };
 
+const TABLE_ID_FIELD_MAP = {
+  projects: "project_id",
+  members: "member_id",
+  products: "product_id",
+  categories: "category_id",
+  customers: "customer_id",
+  staff: "staff_id",
+  suppliers: "supplier_id",
+  purchase_orders: "poid",
+  purchase_order_items: "po_item_id",
+  sales: "sale_id",
+  sale_items: "sale_item_id",
+  payments: "payment_id",
+  attendance: "attendance_id",
+};
+
+const TABLE_PAYLOAD_TEMPLATES = {
+  projects: {
+    project_name: "Warehouse Automation",
+    description: "RFID-based inventory tracking",
+    status: "active",
+  },
+  members: {
+    username: "newmember",
+    email: "newmember@example.com",
+    full_name: "New Member",
+    department: "Operations",
+    status: "active",
+    created_at: "2026-03-22T10:30:48.371299",
+    updated_at: "2026-03-22T10:30:48.371299",
+  },
+  staff: {
+    name: "Store Staff",
+    role: "Cashier",
+    salary: 35000,
+    contact_number: "9999999999",
+    join_date: "2026-03-22",
+    member_id: 1,
+  },
+  products: {
+    name: "Barcode Scanner",
+    price: 2499.0,
+    stock_quantity: 30,
+    reorder_level: 5,
+    category_id: 1,
+  },
+  categories: {
+    category_name: "Automation",
+    description: "Automation tools and devices",
+    created_at: "2026-03-22T10:30:48.371299",
+  },
+  customers: {
+    name: "Customer Name",
+    email: "customer@example.com",
+    contact_number: "8888888888",
+    loyalty_points: 0,
+    created_at: "2026-03-22T10:30:48.371299",
+  },
+  suppliers: {
+    name: "Supply Co",
+    contact_number: "7777777777",
+    email: "supply@example.com",
+    address: "Main Road, City",
+  },
+  purchase_orders: {
+    supplier_id: 1,
+    order_date: "2026-03-22",
+    total_amount: 12000.0,
+    status: "pending",
+  },
+  purchase_order_items: {
+    poid: 1,
+    product_id: 1,
+    quantity: 10,
+    cost_price: 900.0,
+  },
+  sales: {
+    customer_id: 1,
+    staff_id: 1,
+    sale_date: "2026-03-22",
+    total_amount: 1500.0,
+  },
+  sale_items: {
+    sale_id: 1,
+    product_id: 1,
+    quantity: 2,
+    unit_price: 750.0,
+  },
+  payments: {
+    sale_id: 1,
+    payment_method: "UPI",
+    amount: 1500.0,
+    payment_date: "2026-03-22",
+  },
+  attendance: {
+    staff_id: 1,
+    entry_time: "09:00:00",
+    exit_time: "18:00:00",
+    work_date: "2026-03-22",
+  },
+};
+
 function roleSelectEl() {
   return document.getElementById("portalRole");
 }
@@ -53,7 +155,14 @@ function renderTableOptions(tableNames) {
 
   if (tableNames.includes(current)) {
     select.value = current;
+    return;
   }
+
+  if (tableNames.includes("projects")) {
+    select.value = "projects";
+  }
+
+  applyPayloadTemplateForSelectedTable();
 }
 
 function applyTableVisibility() {
@@ -230,6 +339,16 @@ function parsePayload() {
   return JSON.parse(raw);
 }
 
+function applyPayloadTemplateForSelectedTable() {
+  const selectedTable = tableName();
+  const template = TABLE_PAYLOAD_TEMPLATES[selectedTable];
+  if (!template) {
+    return;
+  }
+
+  document.getElementById("payloadInput").value = JSON.stringify(template, null, 2);
+}
+
 document.getElementById("listBtn").addEventListener("click", async () => {
   try {
     const result = await apiCall(`/api/project/${tableName()}`);
@@ -257,7 +376,27 @@ document.getElementById("getBtn").addEventListener("click", async () => {
 document.getElementById("createBtn").addEventListener("click", async () => {
   try {
     const payload = parsePayload();
-    const result = await apiCall(`/api/project/${tableName()}`, {
+    const currentTable = tableName();
+    const idValue = recordId();
+
+    if (idValue) {
+      const numericId = Number(idValue);
+      if (!Number.isInteger(numericId)) {
+        setOutput(crudOutput, "Record ID must be an integer when provided");
+        return;
+      }
+
+      const idField = TABLE_ID_FIELD_MAP[currentTable];
+      if (idField && payload[idField] == null) {
+        payload[idField] = numericId;
+      }
+
+      if (payload.record_id == null) {
+        payload.record_id = numericId;
+      }
+    }
+
+    const result = await apiCall(`/api/project/${currentTable}`, {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -276,7 +415,8 @@ document.getElementById("updateBtn").addEventListener("click", async () => {
 
   try {
     const payload = parsePayload();
-    const result = await apiCall(`/api/project/${tableName()}/${encodeURIComponent(id)}`, {
+    const currentTable = tableName();
+    const result = await apiCall(`/api/project/${currentTable}/${encodeURIComponent(id)}`, {
       method: "PUT",
       body: JSON.stringify(payload),
     });
@@ -391,6 +531,10 @@ document.getElementById("adminRemoveFromGroupBtn").addEventListener("click", asy
   } catch (error) {
     setOutput(adminOutput, `Admin remove member failed: ${error.message}`);
   }
+});
+
+tableSelectEl().addEventListener("change", () => {
+  applyPayloadTemplateForSelectedTable();
 });
 
 document.getElementById("adminUnauthorizedCheckBtn").addEventListener("click", async () => {

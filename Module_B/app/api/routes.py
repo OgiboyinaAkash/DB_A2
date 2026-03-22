@@ -656,6 +656,8 @@ def _coerce_record_id(record_id):
 
 
 FALLBACK_ID_FIELDS = {
+    "projects": "project_id",
+    "members": "member_id",
     "products": "product_id",
     "categories": "category_id",
     "customers": "customer_id",
@@ -673,6 +675,8 @@ def _fallback_table(table_name):
 def _fallback_list_records(table_name):
     table, message = _fallback_table(table_name)
     if table is None:
+        if "not found" in str(message).lower():
+            return [], "OK"
         return None, message
     records = [{"id": record_id, "data": record_data} for record_id, record_data in table.get_all()]
     return records, "OK"
@@ -692,17 +696,41 @@ def _fallback_create_record(table_name, payload):
 
     record = dict(payload)
     id_field = FALLBACK_ID_FIELDS.get(table_name)
+
+    explicit_record_id = record.get("record_id")
+    if id_field and isinstance(explicit_record_id, int) and not isinstance(record.get(id_field), int):
+        record[id_field] = explicit_record_id
+
     if id_field and not isinstance(record.get(id_field), int):
         record[id_field] = _next_id(table)
 
     if id_field and isinstance(record.get(id_field), int):
-        existing = table.get(record[id_field])
+        normalized_id = record[id_field]
+        existing = table.get(normalized_id)
         if existing is not None:
-            return None, f"Record with id '{record[id_field]}' already exists"
+            compare_keys = [
+                key
+                for key in record.keys()
+                if key not in {"record_id", "id", id_field}
+            ]
+            same_payload = all(existing.get(key) == record.get(key) for key in compare_keys)
+            if same_payload:
+                return int(normalized_id), "OK", "noop"
 
-    table.insert(record)
+            updated = existing.copy()
+            updated.update(record)
+            updated[id_field] = normalized_id
+            updated_ok, updated_message = table.update(normalized_id, updated)
+            if not updated_ok:
+                return None, updated_message, "error"
+            return int(normalized_id), "OK", "update"
+
+    inserted_ok, inserted_result = table.insert(record)
+    if not inserted_ok:
+        return None, inserted_result, "error"
+
     record_id = record.get(id_field) if id_field else _next_id(table) - 1
-    return int(record_id) if isinstance(record_id, int) else None, "OK"
+    return int(record_id) if isinstance(record_id, int) else None, "OK", "create"
 
 
 def _fallback_update_record(table_name, normalized_id, payload):
@@ -1056,9 +1084,11 @@ def create_project_record(table_name):
         table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
         project_id = payload.get("project_id") if isinstance(payload.get("project_id"), int) else _next_table_id(CORE_PROJECT_TABLE, "project_id")
         all_projects = table.get_all()
+        existing_project = None
         for _, row in all_projects:
             if row.get("project_id") == project_id:
-                return jsonify({"error": f"Project {project_id} already exists"}), 400
+                existing_project = row
+                continue
             if row.get("project_name") == payload.get("project_name"):
                 return jsonify({"error": "Project name already exists"}), 400
 
@@ -1073,6 +1103,38 @@ def create_project_record(table_name):
         }
         if not record["project_name"]:
             return jsonify({"error": "project_name is required"}), 400
+
+        if existing_project is not None:
+            # Upsert semantics for project table create: same payload is idempotent,
+            # otherwise update the existing row for the supplied project_id.
+            existing_name = str(existing_project.get("project_name", "")).strip()
+            existing_description = existing_project.get("description", "")
+            existing_status = existing_project.get("status", "active")
+
+            incoming_name = str(record["project_name"]).strip()
+            incoming_description = record.get("description", "")
+            incoming_status = record.get("status", "active")
+
+            if (
+                existing_name == incoming_name
+                and existing_description == incoming_description
+                and existing_status == incoming_status
+            ):
+                _audit_write("create", CORE_DB, CORE_PROJECT_TABLE, project_id, "success", "Project already existed with same data")
+                return jsonify({"message": "Record already exists with same data", "id": project_id, "operation": "noop"}), 200
+
+            updated = existing_project.copy()
+            updated["project_name"] = incoming_name
+            updated["description"] = incoming_description
+            updated["status"] = incoming_status
+            updated["updated_at"] = now
+            if not updated.get("created_at"):
+                updated["created_at"] = now
+
+            table.update(project_id, updated)
+            _audit_write("update", CORE_DB, CORE_PROJECT_TABLE, project_id, "success", "Project upserted via create")
+            return jsonify({"message": "Record existed; updated successfully", "id": project_id, "operation": "update"}), 200
+
         table.insert(record)
         _audit_write("create", CORE_DB, CORE_PROJECT_TABLE, project_id, "success", "Project created")
         return jsonify({"message": "Record created", "id": project_id}), 201
@@ -1082,20 +1144,32 @@ def create_project_record(table_name):
         if isinstance(payload, list):
             results = []
             for record in payload:
-                created_id, fallback_message = _fallback_create_record(table_name, record)
+                created_id, fallback_message, fallback_operation = _fallback_create_record(table_name, record)
                 if fallback_message != "OK":
                     results.append({"status": "failed", "error": fallback_message})
                 else:
-                    results.append({"status": "success", "id": created_id})
+                    results.append({"status": "success", "id": created_id, "operation": fallback_operation})
             return jsonify({"message": "Bulk insert processed", "results": results, "backend": "bplustree_fallback"}), 201
 
-        created_id, fallback_message = _fallback_create_record(table_name, payload)
+        created_id, fallback_message, fallback_operation = _fallback_create_record(table_name, payload)
         if fallback_message != "OK":
-            if "already exists" in fallback_message.lower():
+            lowered = fallback_message.lower()
+            if "already exists" in lowered:
                 return jsonify({"error": fallback_message}), 400
+            if "missing required fields" in lowered or "invalid type" in lowered or "search_key" in lowered:
+                return jsonify({"error": fallback_message, "backend": "bplustree_fallback"}), 400
             return jsonify({"error": f"SQL backend unavailable: {status}", "fallback_error": fallback_message}), 503
+
+        if fallback_operation == "update":
+            _audit_write("update", PROJECT_DB, table_name, created_id if isinstance(created_id, int) else -1, "success", "Record updated via create (fallback)")
+            return jsonify({"message": "Record existed; updated successfully", "id": created_id, "operation": "update", "backend": "bplustree_fallback"}), 200
+
+        if fallback_operation == "noop":
+            _audit_write("create", PROJECT_DB, table_name, created_id if isinstance(created_id, int) else -1, "success", "Record already existed with same data (fallback)")
+            return jsonify({"message": "Record already exists with same data", "id": created_id, "operation": "noop", "backend": "bplustree_fallback"}), 200
+
         _audit_write("create", PROJECT_DB, table_name, created_id if isinstance(created_id, int) else -1, "success", "Record created (fallback)")
-        return jsonify({"message": "Record created", "id": created_id, "backend": "bplustree_fallback"}), 201
+        return jsonify({"message": "Record created", "id": created_id, "operation": "create", "backend": "bplustree_fallback"}), 201
 
     if isinstance(payload, list):
         results = []
