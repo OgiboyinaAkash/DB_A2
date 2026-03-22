@@ -1,0 +1,97 @@
+{
+  "captured_at": "2026-03-22T08:29:22.846007+00:00",
+  "status": "ok",
+  "phase": "before",
+  "queries": [
+    {
+      "query_name": "products_by_category_price",
+      "explain_rows": [
+        {
+          "id": 1,
+          "select_type": "SIMPLE",
+          "table": "Product",
+          "partitions": null,
+          "type": "ref",
+          "possible_keys": "idx_product_category_price",
+          "key": "idx_product_category_price",
+          "key_len": "5",
+          "ref": "const",
+          "rows": 3,
+          "filtered": 100.0,
+          "Extra": "Backward index scan"
+        }
+      ]
+    },
+    {
+      "query_name": "sales_by_customer_date",
+      "explain_rows": [
+        {
+          "id": 1,
+          "select_type": "SIMPLE",
+          "table": "Sale",
+          "partitions": null,
+          "type": "range",
+          "possible_keys": "idx_sale_customer_date",
+          "key": "idx_sale_customer_date",
+          "key_len": "10",
+          "ref": null,
+          "rows": 2,
+          "filtered": 100.0,
+          "Extra": "Using index condition; Backward index scan"
+        }
+      ]
+    },
+    {
+      "query_name": "saleitem_join_product",
+      "explain_rows": [
+        {
+          "id": 1,
+          "select_type": "SIMPLE",
+          "table": "si",
+          "partitions": null,
+          "type": "ref",
+          "possible_keys": "idx_saleitem_product,idx_saleitem_sale_product",
+          "key": "idx_saleitem_sale_product",
+          "key_len": "4",
+          "ref": "const",
+          "rows": 5,
+          "filtered": 100.0,
+          "Extra": null
+        },
+        {
+          "id": 1,
+          "select_type": "SIMPLE",
+          "table": "p",
+          "partitions": null,
+          "type": "eq_ref",
+          "possible_keys": "PRIMARY",
+          "key": "PRIMARY",
+          "key_len": "4",
+          "ref": "outlet_management.si.ProductID",
+          "rows": 1,
+          "filtered": 100.0,
+          "Extra": null
+        }
+      ]
+    },
+    {
+      "query_name": "customer_by_email",
+      "explain_rows": [
+        {
+          "id": 1,
+          "select_type": "SIMPLE",
+          "table": "Customer",
+          "partitions": null,
+          "type": "const",
+          "possible_keys": "Email",
+          "key": "Email",
+          "key_len": "603",
+          "ref": "const",
+          "rows": 1,
+          "filtered": 100.0,
+          "Extra": null
+        }
+      ]
+    }
+  ]
+}

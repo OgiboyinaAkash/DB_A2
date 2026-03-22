@@ -1,0 +1,104 @@
+{
+  "captured_at": "2026-03-22T08:29:22.846007+00:00",
+  "status": "ok",
+  "phase": "after",
+  "timed_queries": [
+    {
+      "query_name": "products_by_category_price",
+      "elapsed_ms": 0.755,
+      "row_count": 3
+    },
+    {
+      "query_name": "sales_by_customer_date",
+      "elapsed_ms": 0.719,
+      "row_count": 2
+    },
+    {
+      "query_name": "saleitem_join_product",
+      "elapsed_ms": 0.765,
+      "row_count": 5
+    },
+    {
+      "query_name": "customer_by_email",
+      "elapsed_ms": 0.418,
+      "row_count": 1
+    }
+  ],
+  "show_profiles": [
+    {
+      "Query_ID": 44,
+      "Duration": 0.00166125,
+      "Query": "CREATE INDEX idx_saleitem_product ON SaleItem(ProductID)"
+    },
+    {
+      "Query_ID": 45,
+      "Duration": 0.0013475,
+      "Query": "CREATE INDEX idx_saleitem_sale_product ON SaleItem(SaleID, ProductID)"
+    },
+    {
+      "Query_ID": 46,
+      "Duration": 0.002888,
+      "Query": "CREATE INDEX idx_payment_sale ON Payment(SaleID)"
+    },
+    {
+      "Query_ID": 47,
+      "Duration": 0.04667125,
+      "Query": "CREATE INDEX idx_payment_date ON Payment(PaymentDate)"
+    },
+    {
+      "Query_ID": 48,
+      "Duration": 0.04475075,
+      "Query": "CREATE INDEX idx_payment_method_date ON Payment(PaymentMethod, PaymentDate)"
+    },
+    {
+      "Query_ID": 49,
+      "Duration": 0.00137625,
+      "Query": "CREATE INDEX idx_purchaseorder_supplier_date ON PurchaseOrder(SupplierID, OrderDate)"
+    },
+    {
+      "Query_ID": 50,
+      "Duration": 0.003334,
+      "Query": "CREATE INDEX idx_poitem_poid_product ON PurchaseOrderItem(POID, ProductID)"
+    },
+    {
+      "Query_ID": 51,
+      "Duration": 0.00161525,
+      "Query": "EXPLAIN SELECT ProductID, Name, Price\n            FROM Product\n            WHERE CategoryID = 1\n            ORDER BY Price DESC"
+    },
+    {
+      "Query_ID": 52,
+      "Duration": 0.0004405,
+      "Query": "SELECT ProductID, Name, Price\n            FROM Product\n            WHERE CategoryID = 1\n            ORDER BY Price DESC"
+    },
+    {
+      "Query_ID": 53,
+      "Duration": 0.0004875,
+      "Query": "EXPLAIN SELECT SaleID, CustomerID, StaffID, SaleDate, TotalAmount\n            FROM Sale\n            WHERE CustomerID = 1\n              AND SaleDate BETWEEN '2025-02-01' AND '2025-06-30'\n            ORDER BY SaleDate DESC"
+    },
+    {
+      "Query_ID": 54,
+      "Duration": 0.00043825,
+      "Query": "SELECT SaleID, CustomerID, StaffID, SaleDate, TotalAmount\n            FROM Sale\n            WHERE CustomerID = 1\n              AND SaleDate BETWEEN '2025-02-01' AND '2025-06-30'\n            ORDER BY SaleDate DESC"
+    },
+    {
+      "Query_ID": 55,
+      "Duration": 0.00050175,
+      "Query": "EXPLAIN SELECT si.SaleID, si.ProductID, p.Name, si.Quantity, si.UnitPrice\n            FROM SaleItem si\n            JOIN Product p ON p.ProductID = si.ProductID\n            WHERE si.SaleID = 10"
+    },
+    {
+      "Query_ID": 56,
+      "Duration": 0.000481,
+      "Query": "SELECT si.SaleID, si.ProductID, p.Name, si.Quantity, si.UnitPrice\n            FROM SaleItem si\n            JOIN Product p ON p.ProductID = si.ProductID\n            WHERE si.SaleID = 10"
+    },
+    {
+      "Query_ID": 57,
+      "Duration": 0.00033,
+      "Query": "EXPLAIN SELECT CustomerID, Name, ContactNumber, LoyaltyPoints\n            FROM Customer\n            WHERE Email = 'rahul.verma@example.com'"
+    },
+    {
+      "Query_ID": 58,
+      "Duration": 0.00025375,
+      "Query": "SELECT CustomerID, Name, ContactNumber, LoyaltyPoints\n            FROM Customer\n            WHERE Email = 'rahul.verma@example.com'"
+    }
+  ]
+}

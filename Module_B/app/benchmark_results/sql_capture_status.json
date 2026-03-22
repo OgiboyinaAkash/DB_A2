@@ -1,0 +1,192 @@
+{
+  "captured_at": "2026-03-22T08:29:22.846007+00:00",
+  "status": "ok",
+  "drop_index_results": [
+    {
+      "sql": "DROP INDEX ux_product_name ON Product",
+      "ok": true
+    },
+    {
+      "sql": "DROP INDEX idx_product_category ON Product",
+      "ok": true
+    },
+    {
+      "sql": "DROP INDEX idx_product_category_price ON Product",
+      "ok": false,
+      "error": "(1553, \"Cannot drop index 'idx_product_category_price': needed in a foreign key constraint\")"
+    },
+    {
+      "sql": "DROP INDEX idx_product_stock_reorder ON Product",
+      "ok": true
+    },
+    {
+      "sql": "DROP INDEX ux_category_name ON Category",
+      "ok": true
+    },
+    {
+      "sql": "DROP INDEX ux_customer_email ON Customer",
+      "ok": true
+    },
+    {
+      "sql": "DROP INDEX idx_customer_contact ON Customer",
+      "ok": true
+    },
+    {
+      "sql": "DROP INDEX idx_customer_loyalty ON Customer",
+      "ok": true
+    },
+    {
+      "sql": "DROP INDEX idx_sale_customer ON Sale",
+      "ok": true
+    },
+    {
+      "sql": "DROP INDEX idx_sale_staff ON Sale",
+      "ok": true
+    },
+    {
+      "sql": "DROP INDEX idx_sale_date ON Sale",
+      "ok": true
+    },
+    {
+      "sql": "DROP INDEX idx_sale_customer_date ON Sale",
+      "ok": false,
+      "error": "(1553, \"Cannot drop index 'idx_sale_customer_date': needed in a foreign key constraint\")"
+    },
+    {
+      "sql": "DROP INDEX idx_sale_staff_date ON Sale",
+      "ok": false,
+      "error": "(1553, \"Cannot drop index 'idx_sale_staff_date': needed in a foreign key constraint\")"
+    },
+    {
+      "sql": "DROP INDEX idx_saleitem_sale ON SaleItem",
+      "ok": true
+    },
+    {
+      "sql": "DROP INDEX idx_saleitem_product ON SaleItem",
+      "ok": false,
+      "error": "(1553, \"Cannot drop index 'idx_saleitem_product': needed in a foreign key constraint\")"
+    },
+    {
+      "sql": "DROP INDEX idx_saleitem_sale_product ON SaleItem",
+      "ok": false,
+      "error": "(1553, \"Cannot drop index 'idx_saleitem_sale_product': needed in a foreign key constraint\")"
+    },
+    {
+      "sql": "DROP INDEX idx_payment_sale ON Payment",
+      "ok": false,
+      "error": "(1553, \"Cannot drop index 'idx_payment_sale': needed in a foreign key constraint\")"
+    },
+    {
+      "sql": "DROP INDEX idx_payment_date ON Payment",
+      "ok": true
+    },
+    {
+      "sql": "DROP INDEX idx_payment_method_date ON Payment",
+      "ok": true
+    },
+    {
+      "sql": "DROP INDEX idx_purchaseorder_supplier_date ON PurchaseOrder",
+      "ok": false,
+      "error": "(1553, \"Cannot drop index 'idx_purchaseorder_supplier_date': needed in a foreign key constraint\")"
+    },
+    {
+      "sql": "DROP INDEX idx_poitem_poid_product ON PurchaseOrderItem",
+      "ok": false,
+      "error": "(1553, \"Cannot drop index 'idx_poitem_poid_product': needed in a foreign key constraint\")"
+    }
+  ],
+  "create_index_results": [
+    {
+      "sql": "CREATE UNIQUE INDEX ux_product_name ON Product(Name)",
+      "ok": true
+    },
+    {
+      "sql": "CREATE INDEX idx_product_category ON Product(CategoryID)",
+      "ok": true
+    },
+    {
+      "sql": "CREATE INDEX idx_product_category_price ON Product(CategoryID, Price)",
+      "ok": false,
+      "error": "(1061, \"Duplicate key name 'idx_product_category_price'\")"
+    },
+    {
+      "sql": "CREATE INDEX idx_product_stock_reorder ON Product(StockQuantity, ReorderLevel)",
+      "ok": true
+    },
+    {
+      "sql": "CREATE UNIQUE INDEX ux_category_name ON Category(CategoryName)",
+      "ok": true
+    },
+    {
+      "sql": "CREATE UNIQUE INDEX ux_customer_email ON Customer(Email)",
+      "ok": true
+    },
+    {
+      "sql": "CREATE INDEX idx_customer_contact ON Customer(ContactNumber)",
+      "ok": true
+    },
+    {
+      "sql": "CREATE INDEX idx_customer_loyalty ON Customer(LoyaltyPoints)",
+      "ok": true
+    },
+    {
+      "sql": "CREATE INDEX idx_sale_customer ON Sale(CustomerID)",
+      "ok": true
+    },
+    {
+      "sql": "CREATE INDEX idx_sale_staff ON Sale(StaffID)",
+      "ok": true
+    },
+    {
+      "sql": "CREATE INDEX idx_sale_date ON Sale(SaleDate)",
+      "ok": true
+    },
+    {
+      "sql": "CREATE INDEX idx_sale_customer_date ON Sale(CustomerID, SaleDate)",
+      "ok": false,
+      "error": "(1061, \"Duplicate key name 'idx_sale_customer_date'\")"
+    },
+    {
+      "sql": "CREATE INDEX idx_sale_staff_date ON Sale(StaffID, SaleDate)",
+      "ok": false,
+      "error": "(1061, \"Duplicate key name 'idx_sale_staff_date'\")"
+    },
+    {
+      "sql": "CREATE INDEX idx_saleitem_sale ON SaleItem(SaleID)",
+      "ok": true
+    },
+    {
+      "sql": "CREATE INDEX idx_saleitem_product ON SaleItem(ProductID)",
+      "ok": false,
+      "error": "(1061, \"Duplicate key name 'idx_saleitem_product'\")"
+    },
+    {
+      "sql": "CREATE INDEX idx_saleitem_sale_product ON SaleItem(SaleID, ProductID)",
+      "ok": false,
+      "error": "(1061, \"Duplicate key name 'idx_saleitem_sale_product'\")"
+    },
+    {
+      "sql": "CREATE INDEX idx_payment_sale ON Payment(SaleID)",
+      "ok": false,
+      "error": "(1061, \"Duplicate key name 'idx_payment_sale'\")"
+    },
+    {
+      "sql": "CREATE INDEX idx_payment_date ON Payment(PaymentDate)",
+      "ok": true
+    },
+    {
+      "sql": "CREATE INDEX idx_payment_method_date ON Payment(PaymentMethod, PaymentDate)",
+      "ok": true
+    },
+    {
+      "sql": "CREATE INDEX idx_purchaseorder_supplier_date ON PurchaseOrder(SupplierID, OrderDate)",
+      "ok": false,
+      "error": "(1061, \"Duplicate key name 'idx_purchaseorder_supplier_date'\")"
+    },
+    {
+      "sql": "CREATE INDEX idx_poitem_poid_product ON PurchaseOrderItem(POID, ProductID)",
+      "ok": false,
+      "error": "(1061, \"Duplicate key name 'idx_poitem_poid_product'\")"
+    }
+  ]
+}
