@@ -3,16 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Outlet Management - SubTask 2</title>
+  <title>🛒 ShopStop - Outlet Management System</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="logged-out">
-  <main class="app-shell">
-    <section class="panel auth-panel">
-      <h1 class="pre-login-only">Outlet Management API UI</h1>
-      <p class="subtitle pre-login-only">Role-based access portal</p>
+  <!-- Login Screen -->
+  <div class="login-screen pre-login-only">
+    <section class="panel auth-panel login-panel">
+      <div class="auth-header">
+        <h1>🛒 ShopStop</h1>
+        <p class="subtitle">Outlet Management System</p>
+        <p class="tagline">Secure Access Portal</p>
+      </div>
 
-      <form id="loginForm" class="form-grid pre-login-only">
+      <form id="loginForm" class="form-grid">
         <label>
           Login As
           <select id="portalRole" name="portalRole" required>
@@ -32,7 +36,7 @@
         <button type="submit">Login</button>
       </form>
 
-      <div class="quick-help pre-login-only">
+      <div class="quick-help">
         <strong>Demo Accounts:</strong>
         <ul>
           <li>Member: aarav / Aarav@123</li>
@@ -40,105 +44,137 @@
           <li>Customer: customer1 / Customer@123</li>
         </ul>
       </div>
-
-      <div class="session-row post-login-only">
-        <button id="meButton" disabled>Who Am I</button>
-        <button id="logoutButton" disabled>Logout</button>
-      </div>
-      <p id="roleBadge" class="subtitle post-login-only"></p>
-      <pre id="authStatus" class="output post-login-only"></pre>
     </section>
+  </div>
 
-    <section class="panel crud-panel">
-      <h2>Project Table CRUD</h2>
-      <div class="controls">
-        <label>
-          Table
-          <select id="tableSelect"></select>
-        </label>
-        <label>
-          Record ID (optional for Create, required for Read/Update/Delete)
-          <input id="recordIdInput" type="text" placeholder="1" />
-        </label>
+  <!-- Main Application Screen -->
+  <div class="app-screen post-login-only" style="display: none;">
+    <!-- Header with User Info -->
+    <header class="app-header">
+      <div class="header-left">
+        <h1>🛒 ShopStop</h1>
+        <p id="roleBadge" class="header-role"></p>
       </div>
+      <div class="header-right">
+        <button id="meButton" class="header-btn">👤 Who Am I</button>
+        <button id="logoutButton" class="header-btn logout-btn">🚪 Logout</button>
+      </div>
+    </header>
 
-      <div class="action-grid">
-        <button id="listBtn" disabled>List All</button>
-        <button id="getBtn" disabled>Get One</button>
-        <button id="createBtn" disabled>Create</button>
-        <button id="updateBtn" disabled>Update</button>
-        <button id="deleteBtn" disabled>Delete</button>
+    <!-- User Info Modal -->
+    <div id="userInfoPanel" class="user-info-modal" style="display: none;">
+      <div class="user-info-content">
+        <button class="close-btn">&times;</button>
+        <pre id="authStatus" class="output"></pre>
       </div>
+    </div>
 
-      <label class="payload-label">
-        JSON Payload (Create/Update)
-          <textarea id="payloadInput" rows="10">{
-        "project_name": "Warehouse Automation",
-        "description": "RFID-based inventory tracking",
-        "status": "active"
-}</textarea>
-      </label>
+    <!-- Navigation Menu -->
+    <nav class="nav-menu">
+      <button class="nav-btn" data-page="portfolio">👤 Profiles</button>
+      <button class="nav-btn" data-page="database">📋 Database</button>
+      <button class="nav-btn" data-page="admin">⚙️ Admin</button>
+    </nav>
 
-      <pre id="crudOutput" class="output"></pre>
-    </section>
+    <!-- Content Area -->
+    <main class="app-content">
+      <!-- Portfolio Section -->
+      <section id="portfolio-page" class="content-page">
+        <section class="panel portfolio-panel">
+          <h2>👤 Staff & Member Portfolio</h2>
+          <div class="section-info">View member details and staff information</div>
+          <div class="controls">
+            <label>
+              <span class="label-icon">🆔</span> Member ID (optional)
+              <input id="portfolioMemberId" type="text" placeholder="e.g., 1" />
+            </label>
+          </div>
+          <div class="action-grid">
+            <button id="portfolioListBtn" disabled>📇 View All Profiles</button>
+            <button id="portfolioOneBtn" disabled>👁️ View One Profile</button>
+          </div>
+          <div id="portfolioOutput" class="profile-display"></div>
 
-    <section class="panel portfolio-panel">
-      <h2>Member Portfolio (Permission Filtered)</h2>
-      <div class="controls">
-        <label>
-          Member ID (optional)
-          <input id="portfolioMemberId" type="text" placeholder="2" />
-        </label>
-      </div>
-      <div class="action-grid">
-        <button id="portfolioListBtn" disabled>View Accessible Profiles</button>
-        <button id="portfolioOneBtn" disabled>View One Profile</button>
-      </div>
-      <pre id="portfolioOutput" class="output"></pre>
+          <h3>✏️ Update My Profile</h3>
+          <p class="info-text">Update your personal information</p>
+          <div class="form-section">
+            <label>Update Fields</label>
+            <form id="profileUpdateForm" class="dynamic-form">
+              <div class="form-group">
+                <label><span>email</span> <span class="field-type">text</span></label>
+                <input type="text" data-field-name="email" placeholder="your.email@example.com" />
+              </div>
+              <div class="form-group">
+                <label><span>contact_number</span> <span class="field-type">text</span></label>
+                <input type="text" data-field-name="contact_number" placeholder="9999999999" />
+              </div>
+            </form>
+          </div>
+          <div class="action-grid">
+            <button id="updateSelfPortfolioBtn" disabled>💾 Save Changes</button>
+          </div>
+        </section>
+      </section>
 
-      <h3>Update My Portfolio (Regular Users Allowed)</h3>
-      <label class="payload-label">
-        JSON Payload (allowed: full_name, email, department)
-        <textarea id="selfPortfolioPayload" rows="6">{
-  "full_name": "Updated Name",
-  "email": "updated.email@example.com",
-  "department": "Operations"
-}</textarea>
-      </label>
-      <div class="action-grid">
-        <button id="updateSelfPortfolioBtn" disabled>Update My Portfolio</button>
-      </div>
-    </section>
+      <!-- Database Management Section -->
+      <section id="database-page" class="content-page">
+        <section class="panel crud-panel">
+          <h2>📋 Database Management</h2>
+          <div class="section-info">Access and manage outlet data through secure APIs</div>
+          <div class="controls">
+            <label>
+              <span class="label-icon">📊</span> Table
+              <select id="tableSelect"></select>
+            </label>
+            <label>
+              <span class="label-icon">🔍</span> Record ID
+              <input id="recordIdInput" type="text" placeholder="e.g., 1" />
+            </label>
+          </div>
 
-    <section class="panel admin-panel">
-      <h2>Admin Controls (RBAC Protected)</h2>
-      <div class="controls">
-        <label>
-          Group ID
-          <input id="adminGroupId" type="number" min="1" placeholder="1" />
-        </label>
-        <label>
-          Member ID
-          <input id="adminMemberId" type="number" min="1" placeholder="2" />
-        </label>
-        <label>
-          Role
-          <select id="adminRole">
-            <option value="user">user</option>
-            <option value="admin">admin</option>
-            <option value="viewer">viewer</option>
-          </select>
-        </label>
-      </div>
-      <div class="action-grid">
-        <button id="adminListGroupsBtn" disabled>List Groups + Members</button>
-        <button id="adminAddToGroupBtn" disabled>Add Member To Group</button>
-        <button id="adminRemoveFromGroupBtn" disabled>Remove Member From Group</button>
-        <button id="adminUnauthorizedCheckBtn" disabled>Unauthorized Change Check</button>
-      </div>
-      <pre id="adminOutput" class="output"></pre>
-    </section>
-  </main>
+          <div class="action-grid">
+            <button id="listBtn" disabled>📑 List All</button>
+            <button id="getBtn" disabled>🔎 Get One</button>
+            <button id="createBtn" disabled>✨ Create</button>
+            <button id="updateBtn" disabled>✏️ Update</button>
+            <button id="deleteBtn" disabled>🗑️ Delete</button>
+          </div>
+
+          <div class="payload-label form-section">
+            <label>Data Fields (Create/Update)</label>
+            <form id="payloadForm" class="dynamic-form"></form>
+          </div>
+
+          <div id="crudOutput" class="output"></div>
+        </section>
+      </section>
+
+      <!-- Admin Controls Section -->
+      <section id="admin-page" class="content-page">
+        <section class="panel admin-panel">
+          <h2>⚙️ Admin Controls</h2>
+          <div class="section-info">Group management and member assignment (Admin only)</div>
+          <div class="controls">
+            <label>
+              <span class="label-icon">👥</span> Group ID
+              <input id="adminGroupId" type="number" min="1" placeholder="1" />
+            </label>
+            <label>
+              <span class="label-icon">👤</span> Member ID
+              <input id="adminMemberId" type="number" min="1" placeholder="1" />
+            </label>
+          </div>
+          <div class="action-grid">
+            <button id="adminListGroupsBtn" disabled>📊 List Groups</button>
+            <button id="adminAddToGroupBtn" disabled>➕ Add Member</button>
+            <button id="adminRemoveFromGroupBtn" disabled>➖ Remove Member</button>
+            <button id="adminUnauthorizedCheckBtn" disabled>🔒 Check Security</button>
+          </div>
+          <div id="adminOutput" class="output"></div>
+        </section>
+      </section>
+    </main>
+  </div>
 
   <script src="apiService.js"></script>
   <script src="app.js"></script>

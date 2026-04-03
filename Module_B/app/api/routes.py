@@ -24,8 +24,8 @@ api = Blueprint("api", __name__)
 
 CORE_DB = "system_core"
 PROJECT_DB = "outlet_management"
-CORE_PROJECT_TABLE = "projects"
-CORE_MEMBER_PROJECT_MAPPING_TABLE = "member_project_mappings"
+CORE_GROUP_TABLE = "groups"
+CORE_MEMBER_GROUP_MAPPING_TABLE = "member_group_mappings"
 PROJECT_TABLES = {
     "members": "MemberID",
     "staff": "StaffID",
@@ -41,7 +41,7 @@ PROJECT_TABLES = {
     "attendance": "AttendanceID",
 }
 ROLE_TABLE_ACCESS = {
-    "member": set(PROJECT_TABLES.keys()) | {CORE_PROJECT_TABLE},
+    "member": set(PROJECT_TABLES.keys()) | {CORE_GROUP_TABLE},
     "customer": {"products", "categories", "sales", "payments"},
     "staff": {"products", "attendance", "categories", "customers", "sales", "sale_items", "payments"},
 }
@@ -58,7 +58,10 @@ PUBLIC_ENDPOINTS = {
     "api.health",
     "api.welcome",
 }
-AUDIT_LOG_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "audit.log")
+# Audit logs stored in logs/ folder
+LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs")
+os.makedirs(LOGS_DIR, exist_ok=True)
+AUDIT_LOG_FILE = os.path.join(LOGS_DIR, "audit.log")
 MONITORED_TABLES = [
     (PROJECT_DB, "products"),
     (PROJECT_DB, "categories"),
@@ -69,8 +72,8 @@ MONITORED_TABLES = [
     (CORE_DB, "credentials"),
     (CORE_DB, "groups"),
     (CORE_DB, "member_group_mappings"),
-    (CORE_DB, CORE_PROJECT_TABLE),
-    (CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE),
+    (CORE_DB, CORE_GROUP_TABLE),
+    (CORE_DB, CORE_MEMBER_GROUP_MAPPING_TABLE),
 ]
 ENDPOINT_METRICS = {}
 
@@ -278,32 +281,33 @@ def _record_endpoint_metric(duration_ms, status_code):
     ENDPOINT_METRICS[metric_key] = existing
 
 
-def _ensure_member_project_tables():
-    projects_schema = {
-        "project_id": int,
-        "project_name": str,
+def _ensure_member_group_tables():
+    """Ensure group and member-group mapping tables exist."""
+    groups_schema = {
+        "group_id": int,
+        "group_name": str,
         "description": str,
-        "status": str,
         "created_at": str,
         "updated_at": str,
     }
     db_manager.create_table(
         CORE_DB,
-        CORE_PROJECT_TABLE,
-        projects_schema,
+        CORE_GROUP_TABLE,
+        groups_schema,
         order=8,
-        search_key="project_id",
+        search_key="group_id",
     )
 
     mapping_schema = {
         "mapping_id": int,
         "member_id": int,
-        "project_id": int,
+        "group_id": int,
+        "role_in_group": str,
         "assigned_at": str,
     }
     db_manager.create_table(
         CORE_DB,
-        CORE_MEMBER_PROJECT_MAPPING_TABLE,
+        CORE_MEMBER_GROUP_MAPPING_TABLE,
         mapping_schema,
         order=8,
         search_key="mapping_id",
@@ -323,79 +327,23 @@ def _next_table_id(table_name, id_field):
     return max_id + 1
 
 
-def _member_project_ids(member_id):
-    mapping_table, _ = db_manager.get_table(CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE)
-    mappings = mapping_table.get_all()
-    return {
-        row.get("project_id")
-        for _, row in mappings
-        if row.get("member_id") == member_id and isinstance(row.get("project_id"), int)
-    }
-
-
-def _project_record(project_id):
-    project_table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
-    return project_table.get(project_id)
-
-
-def _project_member_ids(project_id):
-    mapping_table, _ = db_manager.get_table(CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE)
-    mappings = mapping_table.get_all()
-    return {
-        row.get("member_id")
-        for _, row in mappings
-        if row.get("project_id") == project_id and isinstance(row.get("member_id"), int)
-    }
-
-
-def _member_projects(member_id):
-    project_ids = _member_project_ids(member_id)
-    projects = []
-    for project_id in sorted(project_ids):
-        project = _project_record(project_id)
-        if project:
-            projects.append(project)
-    return projects
-
-
-def _assign_member_to_project(member_id, project_id):
-    members_table, _ = db_manager.get_table(CORE_DB, "members")
-    if not members_table.get(member_id):
-        return {"success": False, "message": f"Member {member_id} not found"}
-
-    project = _project_record(project_id)
-    if not project:
-        return {"success": False, "message": f"Project {project_id} not found"}
-
-    mapping_table, _ = db_manager.get_table(CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE)
-    all_rows = mapping_table.get_all()
-    for _, row in all_rows:
-        if row.get("member_id") == member_id and row.get("project_id") == project_id:
-            return {"success": False, "message": "Member already assigned to project"}
-
-    mapping_id = _next_table_id(CORE_MEMBER_PROJECT_MAPPING_TABLE, "mapping_id")
-    record = {
-        "mapping_id": mapping_id,
-        "member_id": member_id,
-        "project_id": project_id,
-        "assigned_at": datetime.utcnow().isoformat(),
-    }
-    mapping_table.insert(record)
-    return {"success": True, "mapping_id": mapping_id, "record": record}
-
-
-def _remove_member_from_project(member_id, project_id):
-    mapping_table, _ = db_manager.get_table(CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE)
-    all_rows = mapping_table.get_all()
-    for record_id, row in all_rows:
-        if row.get("member_id") == member_id and row.get("project_id") == project_id:
-            mapping_table.delete(record_id)
-            return {"success": True, "message": "Member removed from project"}
-    return {"success": False, "message": "Member-project mapping not found"}
-
-
 def _seed_if_needed():
     members = member_manager.list_all_members()
+    
+    # Ensure groups are seeded (independent of members)
+    existing_groups = group_manager.list_all_groups()
+    if not existing_groups:
+        groups = [
+            ("admins", "System administrators"),
+            ("sales_team", "Sales and cashier team"),
+            ("finance", "Accounting and finance"),
+            ("Billing Section", "Point of Sale and Billing Operations"),
+            ("Stock Maintenance", "Inventory and Stock Management"),
+        ]
+        for group_name, description in groups:
+            group_manager.create_group(group_name, description)
+    
+    # Return early if members already exist
     if members:
         existing_usernames = {m.get("username") for m in members}
         if "customer1" not in existing_usernames:
@@ -476,37 +424,6 @@ def _seed_if_needed():
                 "created_at": "2025-01-01T00:00:00",
             }
         )
-
-    project_table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
-    if not project_table.get_all():
-        now = datetime.utcnow().isoformat()
-        project_table.insert(
-            {
-                "project_id": 1,
-                "project_name": "Retail Dashboard Revamp",
-                "description": "Revamp dashboard and KPI widgets",
-                "status": "active",
-                "created_at": now,
-                "updated_at": now,
-            }
-        )
-        project_table.insert(
-            {
-                "project_id": 2,
-                "project_name": "POS Performance Audit",
-                "description": "Optimize checkout performance and reporting",
-                "status": "active",
-                "created_at": now,
-                "updated_at": now,
-            }
-        )
-
-    mapping_table, _ = db_manager.get_table(CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE)
-    if not mapping_table.get_all():
-        _assign_member_to_project(member_id=1, project_id=1)
-        _assign_member_to_project(member_id=2, project_id=1)
-        _assign_member_to_project(member_id=3, project_id=2)
-        _assign_member_to_project(member_id=4, project_id=2)
         products_table.insert(
             {
                 "product_id": 2,
@@ -520,7 +437,7 @@ def _seed_if_needed():
         )
 
 
-_ensure_member_project_tables()
+_ensure_member_group_tables()
 _seed_if_needed()
 _ensure_api_audit_state_table()
 
@@ -616,14 +533,13 @@ def _table_forbidden_response(table_name):
 
 
 def _can_view_member(requester_id, target_id):
+    # Can always view yourself
     if requester_id == target_id:
         return True
-    if _is_admin(requester_id):
-        return True
-
-    requester_project_ids = _member_project_ids(requester_id)
-    target_project_ids = _member_project_ids(target_id)
-    return bool(requester_project_ids.intersection(target_project_ids))
+    
+    # Only admins can view other people's profiles
+    # Staff and customers can only view their own profile
+    return _is_admin(requester_id)
 
 
 def _allowed_self_portfolio_fields():
@@ -644,7 +560,7 @@ def _ensure_sql_backend():
 
 
 def _get_project_table_name(table_name):
-    if table_name == CORE_PROJECT_TABLE:
+    if table_name == CORE_GROUP_TABLE:
         return table_name, "OK"
     if table_name not in PROJECT_TABLES:
         return None, f"Unsupported table '{table_name}'"
@@ -990,10 +906,8 @@ def list_project_records(table_name):
     if forbidden:
         return forbidden
 
-    if table_name == CORE_PROJECT_TABLE:
-        table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
-        records = [{"id": data.get("project_id"), "data": data} for _, data in table.get_all()]
-        return jsonify({"table": table_name, "records": records, "count": len(records)})
+    if table_name == CORE_GROUP_TABLE:
+        return jsonify({"error": "Group management is handled via /api/groups endpoints"}), 404
 
     ok, status = _ensure_sql_backend()
     if not ok:
@@ -1041,11 +955,8 @@ def get_project_record(table_name, record_id):
     except ValueError:
         return jsonify({"error": "Invalid record id type"}), 400
 
-    if table_name == CORE_PROJECT_TABLE:
-        record = _project_record(normalized_id)
-        if record is None:
-            return jsonify({"error": "Record not found"}), 404
-        return jsonify({"id": normalized_id, "data": record})
+    if table_name == CORE_GROUP_TABLE:
+        return jsonify({"error": "Group management is handled via /api/groups endpoints"}), 404
 
     ok, status = _ensure_sql_backend()
     if not ok:
@@ -1080,64 +991,8 @@ def create_project_record(table_name):
     if not payload:
         return jsonify({"error": "Record data is required"}), 400
 
-    if table_name == CORE_PROJECT_TABLE:
-        table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
-        project_id = payload.get("project_id") if isinstance(payload.get("project_id"), int) else _next_table_id(CORE_PROJECT_TABLE, "project_id")
-        all_projects = table.get_all()
-        existing_project = None
-        for _, row in all_projects:
-            if row.get("project_id") == project_id:
-                existing_project = row
-                continue
-            if row.get("project_name") == payload.get("project_name"):
-                return jsonify({"error": "Project name already exists"}), 400
-
-        now = datetime.utcnow().isoformat()
-        record = {
-            "project_id": project_id,
-            "project_name": payload.get("project_name", "").strip(),
-            "description": payload.get("description", ""),
-            "status": payload.get("status", "active"),
-            "created_at": payload.get("created_at", now),
-            "updated_at": now,
-        }
-        if not record["project_name"]:
-            return jsonify({"error": "project_name is required"}), 400
-
-        if existing_project is not None:
-            # Upsert semantics for project table create: same payload is idempotent,
-            # otherwise update the existing row for the supplied project_id.
-            existing_name = str(existing_project.get("project_name", "")).strip()
-            existing_description = existing_project.get("description", "")
-            existing_status = existing_project.get("status", "active")
-
-            incoming_name = str(record["project_name"]).strip()
-            incoming_description = record.get("description", "")
-            incoming_status = record.get("status", "active")
-
-            if (
-                existing_name == incoming_name
-                and existing_description == incoming_description
-                and existing_status == incoming_status
-            ):
-                _audit_write("create", CORE_DB, CORE_PROJECT_TABLE, project_id, "success", "Project already existed with same data")
-                return jsonify({"message": "Record already exists with same data", "id": project_id, "operation": "noop"}), 200
-
-            updated = existing_project.copy()
-            updated["project_name"] = incoming_name
-            updated["description"] = incoming_description
-            updated["status"] = incoming_status
-            updated["updated_at"] = now
-            if not updated.get("created_at"):
-                updated["created_at"] = now
-
-            table.update(project_id, updated)
-            _audit_write("update", CORE_DB, CORE_PROJECT_TABLE, project_id, "success", "Project upserted via create")
-            return jsonify({"message": "Record existed; updated successfully", "id": project_id, "operation": "update"}), 200
-
-        table.insert(record)
-        _audit_write("create", CORE_DB, CORE_PROJECT_TABLE, project_id, "success", "Project created")
-        return jsonify({"message": "Record created", "id": project_id}), 201
+    if table_name == CORE_GROUP_TABLE:
+        return jsonify({"error": "Group management is handled via /api/groups endpoints"}), 404
 
     ok, status = _ensure_sql_backend()
     if not ok:
@@ -1216,21 +1071,8 @@ def update_project_record(table_name, record_id):
     except ValueError:
         return jsonify({"error": "Invalid record id type"}), 400
 
-    if table_name == CORE_PROJECT_TABLE:
-        table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
-        current = table.get(normalized_id)
-        if not current:
-            _audit_write("update", CORE_DB, CORE_PROJECT_TABLE, normalized_id, "failed", "Record not found")
-            return jsonify({"error": "Record not found"}), 404
-
-        updated = current.copy()
-        for field in ("project_name", "description", "status"):
-            if field in payload:
-                updated[field] = payload[field]
-        updated["updated_at"] = datetime.utcnow().isoformat()
-        table.update(normalized_id, updated)
-        _audit_write("update", CORE_DB, CORE_PROJECT_TABLE, normalized_id, "success", "Project updated")
-        return jsonify({"message": f"Record '{normalized_id}' updated successfully"})
+    if table_name == CORE_GROUP_TABLE:
+        return jsonify({"error": "Group management is handled via /api/groups endpoints"}), 404
 
     ok, status = _ensure_sql_backend()
     if not ok:
@@ -1275,22 +1117,8 @@ def delete_project_record(table_name, record_id):
     except ValueError:
         return jsonify({"error": "Invalid record id type"}), 400
 
-    if table_name == CORE_PROJECT_TABLE:
-        table, _ = db_manager.get_table(CORE_DB, CORE_PROJECT_TABLE)
-        current = table.get(normalized_id)
-        if not current:
-            _audit_write("delete", CORE_DB, CORE_PROJECT_TABLE, normalized_id, "failed", "Record not found")
-            return jsonify({"error": "Record not found"}), 404
-
-        mapping_table, _ = db_manager.get_table(CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE)
-        all_maps = mapping_table.get_all()
-        for map_id, row in all_maps:
-            if row.get("project_id") == normalized_id:
-                mapping_table.delete(map_id)
-
-        table.delete(normalized_id)
-        _audit_write("delete", CORE_DB, CORE_PROJECT_TABLE, normalized_id, "success", "Project deleted")
-        return jsonify({"message": f"Record '{normalized_id}' deleted successfully"})
+    if table_name == CORE_GROUP_TABLE:
+        return jsonify({"error": "Group management is handled via /api/groups endpoints"}), 404
 
     ok, status = _ensure_sql_backend()
     if not ok:
@@ -1333,7 +1161,6 @@ def member_portfolio():
                     "department": member.get("department"),
                     "status": member.get("status"),
                     "groups": _member_groups(member_id),
-                    "projects": _member_projects(member_id),
                 }
             )
 
@@ -1353,7 +1180,6 @@ def member_portfolio_detail(member_id):
         {
             "member": member,
             "groups": _member_groups(member_id),
-            "projects": _member_projects(member_id),
             "can_manage": g.is_admin,
         }
     )
@@ -1374,7 +1200,7 @@ def get_member(member_id):
     if not _can_view_member(g.current_member_id, member_id):
         return jsonify({"error": "Permission denied for this member profile"}), 403
 
-    return jsonify({"member": member, "projects": _member_projects(member_id)})
+    return jsonify({"member": member, "groups": _member_groups(member_id)})
 
 
 @api.route("/members", methods=["POST"])
@@ -1436,53 +1262,18 @@ def delete_member(member_id):
     return jsonify(result)
 
 
-@api.route("/projects/<int:project_id>/members", methods=["GET"])
-def project_members(project_id):
-    project = _project_record(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
+# Project-specific routes are deprecated. Use /api/groups endpoints for group management instead.
+# @api.route("/projects/<int:project_id>/members", methods=["GET"])
+# def project_members(project_id):
+#     ...
 
-    member_ids = sorted(_project_member_ids(project_id))
-    members = []
-    for member_id in member_ids:
-        member = member_manager.get_member(member_id)
-        if member:
-            members.append(member)
+# @api.route("/projects/<int:project_id>/members", methods=["POST"])
+# def add_member_to_project(project_id):
+#     ...
 
-    return jsonify({"project": project, "members": members, "count": len(members)})
-
-
-@api.route("/projects/<int:project_id>/members", methods=["POST"])
-def add_member_to_project(project_id):
-    forbidden = _admin_forbidden_response()
-    if forbidden:
-        return forbidden
-
-    payload = request.get_json(silent=True) or {}
-    member_id = payload.get("member_id")
-    if not isinstance(member_id, int):
-        return jsonify({"error": "member_id (int) is required"}), 400
-
-    result = _assign_member_to_project(member_id, project_id)
-    if not result.get("success"):
-        return jsonify({"error": result.get("message", "Assignment failed")}), 400
-
-    _audit_write("create", CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE, result.get("mapping_id", -1), "success", f"Assigned member {member_id} to project {project_id}")
-    return jsonify(result), 201
-
-
-@api.route("/projects/<int:project_id>/members/<int:member_id>", methods=["DELETE"])
-def remove_member_from_project(project_id, member_id):
-    forbidden = _admin_forbidden_response()
-    if forbidden:
-        return forbidden
-
-    result = _remove_member_from_project(member_id, project_id)
-    if not result.get("success"):
-        return jsonify({"error": result.get("message", "Removal failed")}), 400
-
-    _audit_write("delete", CORE_DB, CORE_MEMBER_PROJECT_MAPPING_TABLE, member_id, "success", f"Removed member {member_id} from project {project_id}")
-    return jsonify(result)
+# @api.route("/projects/<int:project_id>/members/<int:member_id>", methods=["DELETE"])
+# def remove_member_from_project(project_id, member_id):
+#     ...
 
 
 @api.route("/member-portfolio/me", methods=["PUT"])
